@@ -137,9 +137,15 @@
 <script>
 /* ===================== CONFIG ===================== */
 // Set your deployed Cloudflare Worker URL here (no trailing slash).
+// ---- Cloudflare Worker proxy URL (baked in, ready to deploy) ----
+// This is the deployed enso-proxy Worker that fetches NOAA CPC files
+// and adds CORS so this browser page can read them. The Worker source
+// is included as a reference comment at the bottom of this file.
+// To point at a different Worker, set window.ENSO_PROXY before this script,
+// or just edit the URL below. No trailing slash, no ?feed parameter.
 var PROXY = (typeof window!=='undefined' && window.ENSO_PROXY)
   ? window.ENSO_PROXY
-  : 'https://YOUR-WORKER.workers.dev';
+  : 'https://enso-proxy.standphoto.workers.dev';
 
 var THRESH = 0.5; // ±0.5 deg C ONI/RONI El Nino / La Nina threshold
 
@@ -454,3 +460,90 @@ setTimeout(function(){var b=document.getElementById('boot');if(b)b.style.display
 </script>
 </body>
 </html>
+
+<!--
+================================================================================
+ CLOUDFLARE WORKER — enso-proxy   (reference copy; deploy separately)
+================================================================================
+ WHY THIS IS SEPARATE:
+   NOAA CPC's index text files do NOT send an Access-Control-Allow-Origin
+   header, so a browser fetch from GitHub Pages is blocked by CORS. This
+   Worker fetches them server-side and re-serves them with CORS enabled.
+   It CANNOT live inside this HTML file — it must run on Cloudflare's edge.
+
+ CURRENTLY DEPLOYED AT:
+   https://enso-proxy.standphoto.workers.dev      (baked into PROXY above)
+
+ HOW TO (RE)DEPLOY:
+   1. dash.cloudflare.com -> Workers & Pages -> Create -> Start with Hello World
+   2. Name it: enso-proxy   -> Deploy
+   3. Edit code -> paste the script below (replace all) -> Deploy
+   4. Test: open  <worker-url>/?feed=weekly  -> should show NOAA text
+
+ ENDPOINTS (append ?feed=<name>):
+   ?feed=roni    -> RONI.ascii.txt   (official relative ONI, monthly/seasonal)
+   ?feed=oni     -> oni.ascii.txt    (traditional ONI, monthly)
+   ?feed=weekly  -> wksst8110.for    (weekly Nino-region SST anomalies)
+--------------------------------------------------------------------------------
+
+const FEEDS = {
+  roni:   'https://www.cpc.ncep.noaa.gov/data/indices/RONI.ascii.txt',
+  oni:    'https://www.cpc.ncep.noaa.gov/data/indices/oni.ascii.txt',
+  weekly: 'https://www.cpc.ncep.noaa.gov/data/indices/wksst8110.for',
+};
+
+const CORS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, OPTIONS',
+  'Access-Control-Allow-Headers': '*',
+};
+
+export default {
+  async fetch(request) {
+    if (request.method === 'OPTIONS') {
+      return new Response(null, { headers: CORS });
+    }
+
+    const url = new URL(request.url);
+    const feed = url.searchParams.get('feed');
+
+    if (!feed || !FEEDS[feed]) {
+      return new Response(
+        JSON.stringify({ error: 'unknown feed', valid: Object.keys(FEEDS) }),
+        { status: 400, headers: { ...CORS, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    try {
+      const upstream = await fetch(FEEDS[feed], {
+        cf: { cacheTtl: 1800, cacheEverything: true }, // 30 min edge cache
+        headers: { 'User-Agent': 'ENSO-Monitor/1.0 (durian farm weather)' },
+      });
+
+      if (!upstream.ok) {
+        return new Response(
+          JSON.stringify({ error: 'upstream ' + upstream.status }),
+          { status: 502, headers: { ...CORS, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      const body = await upstream.text();
+      return new Response(body, {
+        headers: {
+          ...CORS,
+          'Content-Type': 'text/plain; charset=utf-8',
+          'Cache-Control': 'public, max-age=1800',
+          'X-ENSO-Feed': feed,
+        },
+      });
+    } catch (err) {
+      return new Response(
+        JSON.stringify({ error: 'fetch failed', detail: String(err) }),
+        { status: 500, headers: { ...CORS, 'Content-Type': 'application/json' } }
+      );
+    }
+  },
+};
+
+================================================================================
+-->
