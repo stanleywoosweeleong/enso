@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#0c4a6e">
+<title>ENSO 监测 · El Niño Monitor</title>
+<link rel="manifest" href="data:application/manifest+json,%7B%22name%22%3A%22ENSO%20Monitor%22%2C%22short_name%22%3A%22ENSO%22%2C%22start_url%22%3A%22.%22%2C%22display%22%3A%22standalone%22%2C%22background_color%22%3A%22%230c4a6e%22%2C%22theme_color%22%3A%22%230c4a6e%22%7D">
+<style>
+  :root{
+    --bg:#f0f9ff; --card:#ffffff; --ink:#0f172a; --muted:#64748b;
+    --line:#e2e8f0; --warm:#dc2626; --cool:#2563eb; --neutral:#64748b;
+    --accent:#0c4a6e; --warm-bg:#fef2f2; --cool-bg:#eff6ff; --neutral-bg:#f8fafc;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  body{
+    margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","WenQuanYi Zen Hei",
+    "Microsoft YaHei",sans-serif;background:var(--bg);color:var(--ink);
+    line-height:1.5;padding-bottom:env(safe-area-inset-bottom);
+  }
+  header{
+    background:linear-gradient(135deg,#0c4a6e,#0e7490);color:#fff;
+    padding:18px 16px calc(16px + env(safe-area-inset-top));
+    padding-top:calc(18px + env(safe-area-inset-top));
+  }
+  .htop{display:flex;justify-content:space-between;align-items:flex-start;gap:8px}
+  h1{font-size:18px;margin:0;font-weight:700}
+  .sub{font-size:12px;opacity:.85;margin-top:2px}
+  .langbtn{
+    background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.35);
+    color:#fff;border-radius:8px;padding:6px 11px;font-size:13px;font-weight:600;
+    cursor:pointer;flex-shrink:0;
+  }
+  main{padding:14px;max-width:560px;margin:0 auto}
+  .card{
+    background:var(--card);border:1px solid var(--line);border-radius:14px;
+    padding:16px;margin-bottom:12px;box-shadow:0 1px 2px rgba(15,23,42,.04);
+  }
+  .status-hero{text-align:center;padding:22px 16px}
+  .phase-badge{
+    display:inline-block;font-size:13px;font-weight:700;letter-spacing:.04em;
+    text-transform:uppercase;padding:5px 14px;border-radius:999px;margin-bottom:10px;
+  }
+  .phase-warm{background:var(--warm-bg);color:var(--warm)}
+  .phase-cool{background:var(--cool-bg);color:var(--cool)}
+  .phase-neutral{background:var(--neutral-bg);color:var(--neutral)}
+  .bignum{font-size:46px;font-weight:800;line-height:1;margin:6px 0}
+  .bignum small{font-size:18px;font-weight:600;color:var(--muted)}
+  .phase-label{font-size:17px;font-weight:700;margin-top:4px}
+  .phase-desc{font-size:13px;color:var(--muted);margin-top:8px}
+  .strength{font-size:13px;font-weight:600;margin-top:6px}
+  .cardtitle{font-size:14px;font-weight:700;margin:0 0 10px;display:flex;
+    align-items:center;gap:7px}
+  .cardtitle .dot{width:8px;height:8px;border-radius:50%;background:var(--accent)}
+  .row{display:flex;justify-content:space-between;align-items:baseline;
+    padding:7px 0;border-bottom:1px solid var(--line);font-size:14px}
+  .row:last-child{border-bottom:none}
+  .row .k{color:var(--muted)}
+  .row .v{font-weight:700;font-variant-numeric:tabular-nums}
+  .v.warm{color:var(--warm)} .v.cool{color:var(--cool)} .v.neutral{color:var(--ink)}
+  .spark{display:flex;align-items:flex-end;gap:3px;height:60px;margin:8px 0 2px}
+  .bar{flex:1;border-radius:2px 2px 0 0;min-height:2px;position:relative}
+  .axis-row{display:flex;gap:3px;margin-top:3px}
+  .axis-row span{flex:1;font-size:9px;color:var(--muted);text-align:center;
+    overflow:hidden;white-space:nowrap}
+  .farm{background:linear-gradient(135deg,#fffbeb,#fef3c7);
+    border-color:#fde68a}
+  .farm .cardtitle .dot{background:#d97706}
+  .farm p{font-size:13px;margin:6px 0;color:#78350f}
+  .meta{font-size:11px;color:var(--muted);text-align:center;margin:4px 0 16px}
+  .src{font-size:11px;color:var(--muted);text-align:center;line-height:1.7;
+    padding:8px 0}
+  .src a{color:#0e7490;text-decoration:none}
+  .loading{text-align:center;padding:40px 16px;color:var(--muted);font-size:14px}
+  .spinner{width:28px;height:28px;border:3px solid var(--line);
+    border-top-color:#0e7490;border-radius:50%;margin:0 auto 12px;
+    animation:spin 1s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .err{background:#fef2f2;border:1px solid #fecaca;color:#991b1b;
+    border-radius:12px;padding:14px;font-size:13px;margin-bottom:12px}
+  .err b{display:block;margin-bottom:4px}
+  .btn{display:block;width:100%;background:#0e7490;color:#fff;border:none;
+    border-radius:10px;padding:12px;font-size:14px;font-weight:600;
+    cursor:pointer;margin-top:8px}
+  .btn.ghost{background:#f1f5f9;color:#0f172a;border:1px solid var(--line)}
+  .legend{display:flex;gap:14px;justify-content:center;font-size:11px;
+    color:var(--muted);margin-top:8px}
+  .legend i{display:inline-block;width:9px;height:9px;border-radius:2px;
+    margin-right:4px;vertical-align:middle}
+  .boot{position:fixed;inset:0;background:linear-gradient(135deg,#0c4a6e,#0e7490);
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    color:#fff;z-index:99}
+  .boot h2{font-size:20px;margin:14px 0 4px}.boot p{font-size:13px;opacity:.8}
+</style>
+</head>
+<body>
+<div class="boot" id="boot">
+  <div class="spinner" style="border-top-color:#fff"></div>
+  <h2>ENSO 监测</h2>
+  <p>El Niño / La Niña Monitor</p>
+</div>
+
+<header>
+  <div class="htop">
+    <div>
+      <h1 id="t-title">厄尔尼诺监测</h1>
+      <div class="sub" id="t-sub">海洋尼诺指数 · 实时追踪</div>
+    </div>
+    <button class="langbtn" id="langbtn" onclick="toggleLang()">EN</button>
+  </div>
+</header>
+
+<main id="app">
+  <div class="loading" id="loading">
+    <div class="spinner"></div>
+    <div id="t-loading">正在载入 NOAA 数据…</div>
+  </div>
+</main>
+
+<script>
+/* ===================== CONFIG ===================== */
+// Set your deployed Cloudflare Worker URL here (no trailing slash).
+var PROXY = (typeof window!=='undefined' && window.ENSO_PROXY)
+  ? window.ENSO_PROXY
+  : 'https://enso-proxy.standphoto.workers.dev';
+
+var THRESH = 0.5; // ±0.5 deg C ONI/RONI El Nino / La Nina threshold
+
+/* ===================== I18N ===================== */
+var LANG = localStorage.getItem('enso-lang') || 'zh';
+var T = {
+  title:      {zh:'厄尔尼诺监测', en:'El Niño Monitor'},
+  sub:        {zh:'海洋尼诺指数 · 实时追踪', en:'Oceanic Niño Index · live tracking'},
+  loading:    {zh:'正在载入 NOAA 数据…', en:'Loading NOAA data…'},
+  curStatus:  {zh:'当前状态', en:'Current status'},
+  roniTitle:  {zh:'RONI · 官方指数（季）', en:'RONI · official index (seasonal)'},
+  weeklyTitle:{zh:'每周 Niño 3.4 海温距平', en:'Weekly Niño 3.4 SST anomaly'},
+  trendTitle: {zh:'近 24 季趋势', en:'Last 24 seasons trend'},
+  farmTitle:  {zh:'对榴莲园的意义', en:'What it means for the orchard'},
+  srcTitle:   {zh:'数据来源', en:'Data sources'},
+  elnino:     {zh:'厄尔尼诺', en:'El Niño'},
+  lanina:     {zh:'拉尼娜', en:'La Niña'},
+  neutral:    {zh:'中性', en:'Neutral'},
+  elninoCond: {zh:'厄尔尼诺状态', en:'El Niño conditions'},
+  laninaCond: {zh:'拉尼娜状态', en:'La Niña conditions'},
+  neutralCond:{zh:'ENSO 中性', en:'ENSO-neutral'},
+  latestSeason:{zh:'最新季度', en:'Latest season'},
+  prevSeason: {zh:'上一季度', en:'Previous season'},
+  trend3:     {zh:'近三季走向', en:'3-season trend'},
+  rising:     {zh:'上升 ↑', en:'Rising ↑'},
+  falling:    {zh:'下降 ↓', en:'Falling ↓'},
+  steady:     {zh:'平稳 →', en:'Steady →'},
+  week:       {zh:'当周', en:'This week'},
+  weekAgo:    {zh:'一周前', en:'Week ago'},
+  nino34:     {zh:'Niño 3.4', en:'Niño 3.4'},
+  nino4:      {zh:'Niño 4', en:'Niño 4'},
+  nino3:      {zh:'Niño 3', en:'Niño 3'},
+  weak:       {zh:'弱', en:'Weak'},
+  moderate:   {zh:'中等', en:'Moderate'},
+  strong:     {zh:'强', en:'Strong'},
+  verystrong: {zh:'极强', en:'Very strong'},
+  refresh:    {zh:'刷新数据', en:'Refresh data'},
+  errTitle:   {zh:'无法载入数据', en:'Could not load data'},
+  errBody:    {zh:'请检查网络或 Worker 设置。NOAA 数据需经 Cloudflare Worker 代理。',
+               en:'Check your network or Worker setup. NOAA feeds must be proxied via the Cloudflare Worker.'},
+  retry:      {zh:'重试', en:'Retry'},
+  updated:    {zh:'数据更新于', en:'Data updated'},
+  // Farm-context lines, keyed by phase
+  farmWarm:   {zh:'厄尔尼诺通常为马来西亚带来 偏少雨量与干旱风险。注意灌溉、火患（FireWatch）、以及花期诱导窗口可能提前或延长。强厄尔尼诺年东马与半岛旱情更明显。',
+               en:'El Niño usually brings drier-than-normal rainfall and drought risk to Malaysia. Watch irrigation, fire risk (FireWatch), and flower-induction windows that may open earlier or longer. Strong El Niño years bring sharper drought to East Malaysia and the Peninsula.'},
+  farmCool:   {zh:'拉尼娜通常带来 偏多雨量与水患风险。留意排水、根部病害（疫病）、以及花期可能被连绵雨水打断。喷药窗口变窄。',
+               en:'La Niña usually brings wetter-than-normal rainfall and flood risk. Watch drainage, root disease (Phytophthora), and flowering that rain may interrupt. Spray windows narrow.'},
+  farmNeutral:{zh:'ENSO 中性 — 雨量接近常年。无强烈的干湿偏移信号，按常规季候管理即可，并留意短期天气预报。',
+               en:'ENSO-neutral — rainfall near the long-term normal. No strong wet/dry tilt; manage by the usual seasonal calendar and watch short-range forecasts.'},
+  disclaimer: {zh:'仅供参考 — ENSO 是季节尺度信号，非每日天气预报。',
+               en:'Reference only — ENSO is a seasonal-scale signal, not a daily forecast.'},
+};
+function tr(k){ return (T[k] && T[k][LANG]) || k; }
+
+/* ===================== PARSERS ===================== */
+// RONI.ascii.txt / oni.ascii.txt : whitespace columns.
+// RONI: SEAS YR ANOM      |  ONI: SEAS YR TOTAL ANOM
+function parseSeasonal(text, anomCol){
+  var lines = text.trim().split(/\r?\n/);
+  var out = [];
+  for (var i=1;i<lines.length;i++){
+    var p = lines[i].trim().split(/\s+/);
+    if (p.length < anomCol+1) continue;
+    var seas = p[0], yr = p[1], anom = parseFloat(p[anomCol]);
+    if (isNaN(anom)) continue;
+    out.push({ seas:seas, yr:yr, anom:anom });
+  }
+  return out;
+}
+// wksst8110.for : header rows then lines like
+//  "Week         Nino1+2      Nino3       Nino34        Nino4"
+//  "20Jun2026     22.1 0.4   25.3 0.7   27.6 1.4   28.9 0.9"
+// Each region = SST  ANOM pair. We want anomalies (the 2nd of each pair).
+function parseWeekly(text){
+  var lines = text.trim().split(/\r?\n/);
+  var rows = [];
+  for (var i=0;i<lines.length;i++){
+    var ln = lines[i].trim();
+    // data lines start with a date like 20Jun2026
+    if (!/^\d{1,2}[A-Za-z]{3}\d{4}/.test(ln)) continue;
+    var p = ln.split(/\s+/);
+    // p[0]=date, then 8 numbers: n12 a12 n3 a3 n34 a34 n4 a4
+    if (p.length < 9) continue;
+    rows.push({
+      date: p[0],
+      nino3:  parseFloat(p[4]),
+      nino34: parseFloat(p[6]),
+      nino4:  parseFloat(p[8]),
+    });
+  }
+  return rows; // chronological order as in file
+}
+
+/* ===================== CLASSIFY ===================== */
+function phaseOf(anom){
+  if (anom >= THRESH) return 'warm';
+  if (anom <= -THRESH) return 'cool';
+  return 'neutral';
+}
+function strengthOf(anom){
+  var a = Math.abs(anom);
+  if (a < 0.5) return null;
+  if (a < 1.0) return 'weak';
+  if (a < 1.5) return 'moderate';
+  if (a < 2.0) return 'strong';
+  return 'verystrong';
+}
+function fmt(n){ return (n>=0?'+':'') + n.toFixed(2); }
+
+/* ===================== FETCH ===================== */
+function getFeed(name){
+  return fetch(PROXY + '?feed=' + name, {cache:'no-store'})
+    .then(function(r){ if(!r.ok) throw new Error(name+' '+r.status); return r.text(); });
+}
+
+function load(){
+  var app = document.getElementById('app');
+  app.innerHTML = '<div class="loading" id="loading"><div class="spinner"></div><div>'
+    + tr('loading') + '</div></div>';
+  Promise.all([ getFeed('roni'), getFeed('weekly') ])
+    .then(function(res){
+      var roni = parseSeasonal(res[0], 2);   // RONI anom in col 2
+      var weekly = parseWeekly(res[1]);
+      if (!roni.length || !weekly.length) throw new Error('empty parse');
+      render(roni, weekly);
+    })
+    .catch(function(e){ renderError(e); });
+}
+
+/* ===================== RENDER ===================== */
+function render(roni, weekly){
+  var latest = roni[roni.length-1];
+  var prev   = roni[roni.length-2] || latest;
+  var phase  = phaseOf(latest.anom);
+  var strength = strengthOf(latest.anom);
+
+  // 3-season trend
+  var t3 = 'steady';
+  if (roni.length>=3){
+    var d = latest.anom - roni[roni.length-3].anom;
+    if (d > 0.1) t3='rising'; else if (d < -0.1) t3='falling';
+  }
+
+  var wkLatest = weekly[weekly.length-1];
+  var wkPrev   = weekly[weekly.length-2] || wkLatest;
+
+  var phaseClass = 'phase-'+phase;
+  var phaseLabel = phase==='warm'?tr('elnino'):phase==='cool'?tr('lanina'):tr('neutral');
+  var phaseCond  = phase==='warm'?tr('elninoCond'):phase==='cool'?tr('laninaCond'):tr('neutralCond');
+  var vClass = phase==='warm'?'warm':phase==='cool'?'cool':'neutral';
+  var strengthTxt = strength ? tr(strength)+' · '+phaseLabel : tr('neutral');
+  var farmKey = phase==='warm'?'farmWarm':phase==='cool'?'farmCool':'farmNeutral';
+
+  // spark: last 24 seasons
+  var hist = roni.slice(-24);
+  var maxAbs = Math.max(1.0, Math.max.apply(null, hist.map(function(h){return Math.abs(h.anom);})));
+  var bars = hist.map(function(h){
+    var hpx = Math.max(2, Math.round(Math.abs(h.anom)/maxAbs*54));
+    var col = h.anom>=THRESH?'#dc2626':h.anom<=-THRESH?'#2563eb':'#cbd5e1';
+    var up = h.anom>=0;
+    return '<div class="bar" style="height:'+hpx+'px;background:'+col+';align-self:'
+      +(up?'flex-end':'flex-start')+'" title="'+h.seas+' '+h.yr+': '+fmt(h.anom)+'"></div>';
+  }).join('');
+  var axisLabels = hist.map(function(h,i){
+    return '<span>'+(i%4===0?(h.seas+'\n'+h.yr.slice(2)):'')+'</span>';
+  }).join('');
+
+  var html =
+  '<div class="card status-hero">'
+    +'<div class="phase-badge '+phaseClass+'">'+phaseCond+'</div>'
+    +'<div class="bignum '+vClass+'" style="color:'+(phase==='warm'?'var(--warm)':phase==='cool'?'var(--cool)':'var(--ink)')+'">'
+      +fmt(latest.anom)+'<small>°C</small></div>'
+    +'<div class="phase-label">'+phaseLabel+'</div>'
+    +(strength?'<div class="strength" style="color:'+(phase==='warm'?'var(--warm)':'var(--cool)')+'">'+strengthTxt+'</div>':'')
+    +'<div class="phase-desc">RONI · '+latest.seas+' '+latest.yr+'</div>'
+  +'</div>'
+
+  +'<div class="card">'
+    +'<div class="cardtitle"><span class="dot"></span>'+tr('roniTitle')+'</div>'
+    +'<div class="row"><span class="k">'+tr('latestSeason')+'</span><span class="v '+vClass+'">'+latest.seas+' '+latest.yr+' · '+fmt(latest.anom)+'</span></div>'
+    +'<div class="row"><span class="k">'+tr('prevSeason')+'</span><span class="v">'+prev.seas+' '+prev.yr+' · '+fmt(prev.anom)+'</span></div>'
+    +'<div class="row"><span class="k">'+tr('trend3')+'</span><span class="v">'+tr(t3)+'</span></div>'
+  +'</div>'
+
+  +'<div class="card">'
+    +'<div class="cardtitle"><span class="dot"></span>'+tr('weeklyTitle')+'</div>'
+    +'<div class="row"><span class="k">'+tr('nino34')+' · '+tr('week')+' ('+wkLatest.date+')</span><span class="v '+(phaseOf(wkLatest.nino34))+'">'+fmt(wkLatest.nino34)+'°C</span></div>'
+    +'<div class="row"><span class="k">'+tr('nino34')+' · '+tr('weekAgo')+'</span><span class="v">'+fmt(wkPrev.nino34)+'°C</span></div>'
+    +'<div class="row"><span class="k">'+tr('nino3')+'</span><span class="v">'+fmt(wkLatest.nino3)+'°C</span></div>'
+    +'<div class="row"><span class="k">'+tr('nino4')+'</span><span class="v">'+fmt(wkLatest.nino4)+'°C</span></div>'
+  +'</div>'
+
+  +'<div class="card">'
+    +'<div class="cardtitle"><span class="dot"></span>'+tr('trendTitle')+'</div>'
+    +'<div class="spark">'+bars+'</div>'
+    +'<div class="axis-row">'+axisLabels+'</div>'
+    +'<div class="legend">'
+      +'<span><i style="background:#dc2626"></i>'+tr('elnino')+'</span>'
+      +'<span><i style="background:#cbd5e1"></i>'+tr('neutral')+'</span>'
+      +'<span><i style="background:#2563eb"></i>'+tr('lanina')+'</span>'
+    +'</div>'
+  +'</div>'
+
+  +'<div class="card farm">'
+    +'<div class="cardtitle"><span class="dot"></span>'+tr('farmTitle')+'</div>'
+    +'<p>'+tr(farmKey)+'</p>'
+    +'<p style="font-size:11px;opacity:.75;margin-top:10px">'+tr('disclaimer')+'</p>'
+  +'</div>'
+
+  +'<button class="btn ghost" onclick="load()">'+tr('refresh')+'</button>'
+
+  +'<div class="src">'+tr('srcTitle')+'<br>'
+    +'NOAA CPC · RONI / Niño 3.4 SST<br>'
+    +'<a href="https://www.cpc.ncep.noaa.gov/products/analysis_monitoring/enso_advisory/ensodisc.shtml" target="_blank" rel="noopener">CPC ENSO Diagnostic Discussion ↗</a>'
+  +'</div>';
+
+  document.getElementById('app').innerHTML = html;
+}
+
+function renderError(e){
+  document.getElementById('app').innerHTML =
+    '<div class="err"><b>'+tr('errTitle')+'</b>'+tr('errBody')
+    +'<br><br><code style="font-size:11px;opacity:.7">'+String(e)+'</code></div>'
+    +'<button class="btn" onclick="load()">'+tr('retry')+'</button>';
+}
+
+/* ===================== LANG ===================== */
+function toggleLang(){
+  LANG = (LANG==='zh')?'en':'zh';
+  localStorage.setItem('enso-lang', LANG);
+  document.documentElement.lang = LANG;
+  document.getElementById('langbtn').textContent = (LANG==='zh')?'EN':'中文';
+  document.getElementById('t-title').textContent = tr('title');
+  document.getElementById('t-sub').textContent = tr('sub');
+  load();
+}
+
+/* ===================== BOOT ===================== */
+function boot(){
+  document.getElementById('langbtn').textContent = (LANG==='zh')?'EN':'中文';
+  document.getElementById('t-title').textContent = tr('title');
+  document.getElementById('t-sub').textContent = tr('sub');
+  document.documentElement.lang = LANG;
+  setTimeout(function(){
+    var b = document.getElementById('boot');
+    if (b) b.style.display='none';
+  }, 600);
+  load();
+}
+window.addEventListener('load', boot);
+// safety: never let boot screen stick
+setTimeout(function(){var b=document.getElementById('boot');if(b)b.style.display='none';},12000);
+</script>
+</body>
+</html>
