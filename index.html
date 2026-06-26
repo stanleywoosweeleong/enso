@@ -73,6 +73,7 @@
   .stalebanner{background:#fffbeb;border:1px solid #fde68a;border-radius:8px;
     padding:9px 11px;margin:0 0 10px;font-size:11.5px;line-height:1.55;color:#92400e}
   .stalebanner b{font-size:12.5px}
+  .staledbg{font-family:monospace;font-size:10px;opacity:.8;display:inline-block;margin-top:4px}
   .help{padding:0}
   .help summary{
     list-style:none;cursor:pointer;padding:14px 16px;font-size:14px;
@@ -310,10 +311,10 @@ function parseSeasonal(text, anomCol){
   }
   return out;
 }
-// wksst8110.for : header rows then lines like
-//  "Week         Nino1+2      Nino3       Nino34        Nino4"
-//  "20Jun2026     22.1 0.4   25.3 0.7   27.6 1.4   28.9 0.9"
-// Each region = SST  ANOM pair. We want anomalies (the 2nd of each pair).
+// wksst9120.for : header rows then data lines. Two possible NOAA layouts:
+//  (A) SST+anomaly pairs (8 numbers): "20JUN2026  22.1 0.4  25.3 0.7  27.6 1.4  28.9 0.9"
+//  (B) anomaly-only (4 numbers):      "20JUN2026  0.4  0.7  1.4  0.9"
+// The parser detects which by counting numbers, so it works either way.
 function parseWeekly(text){
   var lines = text.trim().split(/\r?\n/);
   var rows = [];
@@ -323,21 +324,28 @@ function parseWeekly(text){
     if (!/^\d{1,2}[A-Za-z]{3}\d{4}/.test(ln)) continue;
     var date = ln.match(/^\d{1,2}[A-Za-z]{3}\d{4}/)[0];
     var rest = ln.slice(date.length);
-    // Extract every signed decimal individually. CPC glues a negative
+    // Extract every signed decimal individually. CPC sometimes glues a negative
     // anomaly onto its SST with no space (e.g. "23.4-0.4"), so a plain
     // whitespace split would lose columns. This regex pulls each number.
     var nums = rest.match(/-?\d+\.?\d*/g);
-    if (!nums || nums.length < 8) continue;
+    if (!nums) continue;
     nums = nums.map(parseFloat);
-    // 4 region pairs in order: n12_sst n12_anom n3_sst n3_anom
-    //                          n34_sst n34_anom n4_sst n4_anom
-    // Anomalies are the odd indices (1,3,5,7).
+    var n3, n34, n4;
+    if (nums.length >= 8){
+      // Format A: 4 region SST+anomaly pairs; anomalies at odd indices.
+      n3 = nums[3]; n34 = nums[5]; n4 = nums[7];
+    } else if (nums.length >= 4){
+      // Format B: 4 anomalies only, in region order n12,n3,n34,n4.
+      n3 = nums[1]; n34 = nums[2]; n4 = nums[3];
+    } else {
+      continue; // not a valid data row
+    }
     rows.push({
       date:   date,
       ts:     weekTs(date),          // sortable timestamp
-      nino3:  nums[3],
-      nino34: nums[5],
-      nino4:  nums[7],
+      nino3:  n3,
+      nino34: n34,
+      nino4:  n4,
     });
   }
   // Guarantee chronological order regardless of any trailing/footer lines,
@@ -524,7 +532,10 @@ function qrSvg(){
 
 /* ===================== FETCH ===================== */
 function getFeed(name){
-  return fetch(PROXY + '?feed=' + name, {cache:'no-store'})
+  // Append a timestamp so neither the browser nor the Worker's edge cache can
+  // serve a stale copy — each load requests a unique URL.
+  var bust = '&t=' + Date.now();
+  return fetch(PROXY + '?feed=' + name + bust, {cache:'no-store'})
     .then(function(r){ if(!r.ok) throw new Error(name+' '+r.status); return r.text(); });
 }
 
@@ -567,6 +578,9 @@ function render(roni, weekly){
     wkAgeWeeks = Math.floor((Date.now() - wkLatest.ts) / (7*24*3600*1000));
     wkStale = wkAgeWeeks >= 3;
   }
+  // Diagnostic: what did the parser actually receive? Shown only when stale,
+  // so we can tell a bad feed (few/old rows) from an app bug.
+  var wkDebug = weekly.length + ' rows · ' + weekly[0].date + ' → ' + wkLatest.date;
 
   var phaseClass = 'phase-'+phase;
   var phaseLabel = phase==='warm'?tr('elnino'):phase==='cool'?tr('lanina'):tr('neutral');
@@ -650,7 +664,8 @@ function render(roni, weekly){
     +'<div class="cardhint">'+tr('helpWeekly')+'</div>'
     +(wkStale
       ? '<div class="stalebanner"><b>'+tr('staleWarn')+'</b><br>'
-        + tr('staleNote').replace('{n}', wkAgeWeeks) + '</div>'
+        + tr('staleNote').replace('{n}', wkAgeWeeks)
+        + '<br><span class="staledbg">'+wkDebug+'</span></div>'
       : '')
     +'<div class="row"><span class="k">'+tr('nino34')+' · '+tr('week')+' ('+wkLatest.date+')</span><span class="v '+(phaseOf(wkLatest.nino34))+'">'+fmt(wkLatest.nino34)+'°C</span></div>'
     +'<div class="row"><span class="k">'+tr('nino34')+' · '+tr('weekAgo')+'</span><span class="v">'+fmt(wkPrev.nino34)+'°C</span></div>'
@@ -751,13 +766,13 @@ setTimeout(function(){var b=document.getElementById('boot');if(b)b.style.display
  ENDPOINTS (append ?feed=<name>):
    ?feed=roni    -> RONI.ascii.txt   (official relative ONI, monthly/seasonal)
    ?feed=oni     -> oni.ascii.txt    (traditional ONI, monthly)
-   ?feed=weekly  -> wksst8110.for    (weekly Nino-region SST anomalies)
+   ?feed=weekly  -> wksst9120.for    (weekly Nino-region SST anomalies)
 --------------------------------------------------------------------------------
 
 const FEEDS = {
   roni:   'https://www.cpc.ncep.noaa.gov/data/indices/RONI.ascii.txt',
   oni:    'https://www.cpc.ncep.noaa.gov/data/indices/oni.ascii.txt',
-  weekly: 'https://www.cpc.ncep.noaa.gov/data/indices/wksst8110.for',
+  weekly: 'https://www.cpc.ncep.noaa.gov/data/indices/wksst9120.for',
 };
 
 const CORS = {
