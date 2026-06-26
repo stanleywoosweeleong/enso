@@ -252,6 +252,8 @@ var T = {
                en:'Neutral = not warm, not cool → rainfall close to normal, no strong tilt either way.'},
   helpNumber: {zh:'大数字 = 海温比正常 高几度（+）或低几度（−）。超过 +0.5 算厄尔尼诺，低于 −0.5 算拉尼娜，中间是中性。',
                en:'The big number = how many degrees the sea is above (+) or below (−) normal. Above +0.5 = El Niño, below −0.5 = La Niña, in between = Neutral.'},
+  helpAnomaly: {zh:'「距平」是什么？= 跟 正常值的差，不是实际水温。例如海温 29°C、距平 +1.7，意思是「比这片海这个季节的常年平均 高 1.7 度」。正号 = 比正常暖（厄尔尼诺方向）；负号 = 比正常冷（拉尼娜方向）；接近 0 = 正常。注意：负号是「比正常冷」，不是说海水真的很冷 — 太平洋一直都很暖。「正常」是用 30 年（1991–2020）平均算出来的，所以新文件叫「9120」。',
+                en:'What is "anomaly"? = the difference from normal, NOT the actual water temperature. E.g. sea = 29°C, anomaly = +1.7 means "1.7 degrees warmer than this patch\u2019s usual average for this season". Plus = warmer than normal (El Niño direction); minus = cooler than normal (La Niña direction); near 0 = normal. Note: minus means "cooler than normal", not that the water is actually cold — the Pacific is always warm. "Normal" is the 30-year (1991–2020) average, which is why the new file is called "9120".'},
   helpSeason:  {zh:'像 MAM、FMA 这种 = 三个月一组，用每个月的英文首字母。MAM = 三月-四月-五月（Mar-Apr-May），FMA = 二月-三月-四月（Feb-Mar-Apr）。每过一个月就往前推一格，所以差不多每月有一个新数字。',
                en:'Labels like MAM, FMA = a group of 3 months, using each month\u2019s first letter. MAM = Mar-Apr-May, FMA = Feb-Mar-Apr. It slides forward one month at a time, so there\u2019s a new value about every month.'},
   helpWhat34:  {zh:'Niño 3.4 = 太平洋赤道上 一块固定海域 的名字（在国际换日线附近，离马来西亚很远）。科学家选它，是因为它的海温最能反映厄尔尼诺／拉尼娜。旁边的数字不是实际水温，而是 比正常高或低几度。RONI 和「每周 Niño 3.4」看的是同一块海，只是 RONI 是三个月平均（慢、稳），每周值是最新一周（快、跳动）。',
@@ -627,6 +629,7 @@ function render(roni, weekly){
       +'<p class="hl-cool">🔵 '+tr('helpLanina')+'</p>'
       +'<p class="hl-neutral">⚪ '+tr('helpNeutral')+'</p>'
       +'<p>📊 '+tr('helpNumber')+'</p>'
+      +'<p>🌡️ '+tr('helpAnomaly')+'</p>'
       +'<div class="helpdiv"></div>'
       +'<p>📅 '+tr('helpSeason')+'</p>'
       +'<p>🌊 '+tr('helpWhat34')+'</p>'
