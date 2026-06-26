@@ -5,7 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#0c4a6e">
 <title>ENSO 监测 · El Niño Monitor</title>
-<link rel="manifest" href="data:application/manifest+json,%7B%22name%22%3A%22ENSO%20Monitor%22%2C%22short_name%22%3A%22ENSO%22%2C%22start_url%22%3A%22.%22%2C%22display%22%3A%22standalone%22%2C%22background_color%22%3A%22%230c4a6e%22%2C%22theme_color%22%3A%22%230c4a6e%22%7D">
+<link rel="manifest" href="./manifest.json">
+<link rel="icon" type="image/png" sizes="192x192" href="./icon-192.png">
+<link rel="apple-touch-icon" href="./icon-192.png">
 <style>
   :root{
     --bg:#f0f9ff; --card:#ffffff; --ink:#0f172a; --muted:#475569;
@@ -60,7 +62,7 @@
     line-height:1.35;border-top:1px solid;
     border-bottom-left-radius:14px;border-bottom-right-radius:14px}
   .verdict-i{font-size:17px;flex-shrink:0}
-  .verdict-warm{background:#fef2f2;color:#b91c1c;border-top-color:#fecaca}
+  .verdict-warm{background:#fef7ed;color:#9a3412;border-top-color:#fed7aa}
   .verdict-cool{background:#eff6ff;color:#1d4ed8;border-top-color:#bfdbfe}
   .verdict-neutral{background:#f1f5f9;color:#475569;border-top-color:#e2e8f0}
   .seas-plain{opacity:.85;font-size:11px}
@@ -74,6 +76,10 @@
     padding:9px 11px;margin:0 0 10px;font-size:11.5px;line-height:1.55;color:#92400e}
   .stalebanner b{font-size:12.5px}
   .staledbg{font-family:monospace;font-size:10px;opacity:.8;display:inline-block;margin-top:4px}
+  .offlinebar{background:#fffbeb;border:1px solid #fde68a;border-radius:12px;
+    padding:10px 14px;margin-bottom:12px;text-align:center;font-size:13px;
+    font-weight:600;color:#92400e}
+  .offlinebar span{display:block;font-size:11px;font-weight:400;margin-top:3px;opacity:.85}
   /* ---- Info-guide overlay (full-screen, toggled) ---- */
   .help-overlay{position:fixed;inset:0;background:rgba(15,23,42,.55);
     z-index:200;display:none;align-items:flex-end;justify-content:center}
@@ -128,13 +134,15 @@
   .help .helpsrc a{color:#0e7490;text-decoration:none}
   .help .qrbox{text-align:center;margin-top:16px;padding-top:14px;
     border-top:1px solid var(--line)}
-  .help .qrtitle{font-size:13px;font-weight:700;color:#0c4a6e;margin-bottom:10px}
+  .help .qrtitle{font-size:13px;font-weight:700;color:#0c4a6e;margin-bottom:10px;
+    font-family:inherit}
   .help .qrframe{display:inline-block;background:#fff;padding:10px;border-radius:10px;
     border:1px solid var(--line);width:160px;height:160px}
   .help .qrimg{display:block;width:100%;height:100%}
   .help .qrlink{display:block;margin-top:10px;font-size:12px;color:#0e7490;
-    text-decoration:none;word-break:break-all;font-weight:600}
-  .help .qrhint{font-size:11px;color:var(--muted);margin-top:6px;line-height:1.5}
+    text-decoration:none;word-break:break-all;font-weight:400;font-family:inherit}
+  .help .qrhint{font-size:11px;color:var(--muted);margin-top:6px;line-height:1.5;
+    font-family:inherit}
   .help .helpclose{display:block;width:100%;margin-top:16px;padding:11px;
     background:#f1f5f9;color:#0c4a6e;border:1px solid var(--line);border-radius:10px;
     font-size:13px;font-weight:600;cursor:pointer}
@@ -235,6 +243,8 @@ var T = {
   qrTitle:    {zh:'扫码打开这个 App', en:'Scan to open this app'},
   qrHint:     {zh:'用手机相机扫描，分享给其他农友', en:'Scan with your phone camera — share with other farmers'},
   staleWarn:  {zh:'⚠️ 数据可能过期', en:'⚠️ Data looks old'},
+  offlineCache:{zh:'📴 离线模式 · 显示缓存数据', en:'📴 Offline · showing cached data'},
+  cachedAt:   {zh:'数据缓存于', en:'Data cached'},
   staleNote:  {zh:'最新一周已落后约 {n} 周。可能是 NOAA 数据延迟，或 App 未更新。请点「刷新数据」，或确认已上传最新版本。',
                en:'The latest week is about {n} weeks behind. NOAA\u2019s feed may be delayed, or the app may be outdated. Try "Refresh data", or check you uploaded the newest version.'},
   elnino:     {zh:'厄尔尼诺', en:'El Niño'},
@@ -402,6 +412,15 @@ function strengthOf(anom){
   return 'verystrong';
 }
 function fmt(n){ return (n>=0?'+':'') + n.toFixed(2); }
+// Format a cache timestamp as a short local date+time for the offline banner.
+function fmtCacheTime(ms){
+  try {
+    var d = new Date(ms);
+    var pad = function(x){ return (x<10?'0':'')+x; };
+    return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())
+      +' '+pad(d.getHours())+':'+pad(d.getMinutes());
+  } catch(e){ return ''; }
+}
 
 /* ===================== DYNAMIC SITUATION TEXT ===================== */
 // Builds the "right now" sentence entirely from the live numbers:
@@ -571,13 +590,29 @@ function load(){
       var roni = parseSeasonal(res[0], 2);   // RONI anom in col 2
       var weekly = parseWeekly(res[1]);
       if (!roni.length || !weekly.length) throw new Error('empty parse');
-      render(roni, weekly);
+      // Save the fresh feeds so the app can show them next time it's offline.
+      try {
+        localStorage.setItem('enso-cache', JSON.stringify({
+          roni: res[0], weekly: res[1], at: Date.now()
+        }));
+      } catch(e){ /* storage full or blocked — ignore */ }
+      render(roni, weekly, null);
     })
-    .catch(function(e){ renderError(e); });
+    .catch(function(e){
+      // Fetch failed (likely offline). Fall back to the last-saved data.
+      var raw = null;
+      try { raw = JSON.parse(localStorage.getItem('enso-cache') || 'null'); } catch(_){}
+      if (raw && raw.roni && raw.weekly) {
+        var roni = parseSeasonal(raw.roni, 2);
+        var weekly = parseWeekly(raw.weekly);
+        if (roni.length && weekly.length) { render(roni, weekly, raw.at); return; }
+      }
+      renderError(e); // no cache to fall back on
+    });
 }
 
 /* ===================== RENDER ===================== */
-function render(roni, weekly){
+function render(roni, weekly, cachedAt){
   var latest = roni[roni.length-1];
   var prev   = roni[roni.length-2] || latest;
   var phase  = phaseOf(latest.anom);
@@ -636,7 +671,11 @@ function render(roni, weekly){
   }).join('');
 
   var html =
-  '<div class="card status-hero">'
+  (cachedAt
+    ? '<div class="offlinebar">'+tr('offlineCache')
+      +'<br><span>'+tr('cachedAt')+' '+fmtCacheTime(cachedAt)+'</span></div>'
+    : '')
+  +'<div class="card status-hero">'
     +'<div class="phase-badge '+phaseClass+'">'+phaseCond+'</div>'
     +'<div class="bignum '+vClass+'" style="color:'+(phase==='warm'?'var(--warm)':phase==='cool'?'var(--cool)':'var(--ink)')+'">'
       +fmt(latest.anom)+'<small>°C</small></div>'
@@ -785,6 +824,12 @@ function boot(){
   load();
 }
 window.addEventListener('load', boot);
+// Register the service worker so the app shell works offline.
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', function(){
+    navigator.serviceWorker.register('./sw.js').catch(function(){ /* ignore */ });
+  });
+}
 // safety: never let boot screen stick
 setTimeout(function(){var b=document.getElementById('boot');if(b)b.style.display='none';},12000);
 </script>
