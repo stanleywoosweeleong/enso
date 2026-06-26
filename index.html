@@ -49,6 +49,15 @@
   .phase-label{font-size:17px;font-weight:700;margin-top:4px}
   .phase-desc{font-size:13px;color:var(--muted);margin-top:8px}
   .strength{font-size:13px;font-weight:600;margin-top:6px}
+  .verdict{display:inline-flex;align-items:center;gap:7px;margin-top:14px;
+    padding:10px 16px;border-radius:12px;font-size:14px;font-weight:700;
+    line-height:1.35;text-align:left;max-width:90%}
+  .verdict-i{font-size:17px;flex-shrink:0}
+  .verdict-warm{background:#fef2f2;color:#b91c1c;border:1px solid #fecaca}
+  .verdict-cool{background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe}
+  .verdict-neutral{background:#f1f5f9;color:#475569;border:1px solid #e2e8f0}
+  .seas-plain{opacity:.7;font-size:11px}
+  .k-sub{font-size:10px;color:#94a3b8;font-weight:400}
   .cardtitle{font-size:14px;font-weight:700;margin:0 0 10px;display:flex;
     align-items:center;gap:7px}
   .cardtitle .dot{width:8px;height:8px;border-radius:50%;background:var(--accent)}
@@ -70,6 +79,11 @@
   .help .nowline{background:#f0f9ff;border:1px solid #bae6fd;border-radius:10px;
     padding:11px 12px;color:#0c4a6e;margin-top:14px}
   .help .helpdiv{height:1px;background:var(--line);margin:14px 0 4px}
+  .help .outlook{background:#fffbeb;border:1px solid #fde68a;border-radius:10px;
+    padding:11px 12px;margin-top:10px}
+  .help .outlook-h{font-size:12px;font-weight:700;color:#92400e;margin-bottom:6px}
+  .help .outlook p{font-size:12px;line-height:1.6;color:#78350f;margin:0 0 8px}
+  .help .outlook a{font-size:12px;color:#0e7490;text-decoration:none;font-weight:600}
   .row{display:flex;justify-content:space-between;align-items:baseline;
     padding:7px 0;border-bottom:1px solid var(--line);font-size:14px}
   .row:last-child{border-bottom:none}
@@ -207,9 +221,11 @@ var T = {
                 en:'Weekly Niño 3.4 = the latest week\u2019s temperature of the same ocean patch, updated faster. Shows whether things are warming or cooling lately.'},
   helpTrend:   {zh:'趋势图 = 过去两年逐季的变化。红柱=厄尔尼诺，蓝柱=拉尼娜，灰柱=中性。',
                 en:'Trend chart = how each season changed over the last two years. Red = El Niño, blue = La Niña, grey = Neutral.'},
-  helpNow:     {zh:'现在的情况：', en:'Right now: '},
-  helpNowTxt:  {zh:'最近偏中性／略偏冷，但 NOAA 已发布「厄尔尼诺预警」，预计今年下半年到 2026/27 年冬季会转向厄尔尼诺、逐渐增强。简单说：正在从凉转暖的过渡期，往后几个月要开始为偏干天气做准备。',
-                en:'Recently near-neutral / slightly cool, but NOAA has issued an "El Niño Advisory" — El Niño is expected to build from the second half of this year into the 2026/27 winter. In short: we are in a cool-to-warm transition, so start preparing for drier weather in the coming months.'},
+  helpNow:     {zh:'现在的情况（实时数据）：', en:'Right now (live data): '},
+  helpOutlookLabel: {zh:'NOAA 官方展望', en:'NOAA official outlook'},
+  helpOutlookTxt:   {zh:'NOAA 已发布「厄尔尼诺预警」，预计厄尔尼诺将从今年下半年增强至 2026/27 年冬季。（此为 NOAA 每月人工发布的预报，非本 App 实时数据计算，约每月更新一次。）',
+                     en:'NOAA has issued an El Niño Advisory — El Niño is expected to strengthen from the second half of this year into the 2026/27 winter. (This is NOAA\u2019s monthly human-issued forecast, not computed from this app\u2019s live data; updated about monthly.)'},
+  helpOutlookCheck: {zh:'查看 NOAA 最新展望 ↗', en:'Check NOAA\u2019s latest outlook ↗'},
   errTitle:   {zh:'无法载入数据', en:'Could not load data'},
   errBody:    {zh:'请检查网络或 Worker 设置。NOAA 数据需经 Cloudflare Worker 代理。',
                en:'Check your network or Worker setup. NOAA feeds must be proxied via the Cloudflare Worker.'},
@@ -304,6 +320,100 @@ function strengthOf(anom){
 }
 function fmt(n){ return (n>=0?'+':'') + n.toFixed(2); }
 
+/* ===================== DYNAMIC SITUATION TEXT ===================== */
+// Builds the "right now" sentence entirely from the live numbers:
+// the official RONI phase/strength, the latest weekly Nino 3.4, and the
+// direction of travel. No forecast is invented here — the forward-looking
+// NOAA outlook is a separate, clearly-labelled line (see helpOutlook).
+function situationText(phase, strength, t3, roniVal, wkVal){
+  var L = LANG;
+  // 1) Headline state from official RONI
+  var stateZh, stateEn;
+  if (phase==='warm'){
+    stateZh = '目前处于 厄尔尼诺' + (strength?'（'+tr(strength)+'）':'') + '，官方 RONI = '+fmt(roniVal)+'°C';
+    stateEn = 'Currently El Niño' + (strength?' ('+tr(strength)+')':'') + ', official RONI = '+fmt(roniVal)+'°C';
+  } else if (phase==='cool'){
+    stateZh = '目前处于 拉尼娜' + (strength?'（'+tr(strength)+'）':'') + '，官方 RONI = '+fmt(roniVal)+'°C';
+    stateEn = 'Currently La Niña' + (strength?' ('+tr(strength)+')':'') + ', official RONI = '+fmt(roniVal)+'°C';
+  } else {
+    stateZh = '目前 中性（不偏冷也不偏暖），官方 RONI = '+fmt(roniVal)+'°C';
+    stateEn = 'Currently Neutral (neither warm nor cool), official RONI = '+fmt(roniVal)+'°C';
+  }
+  // 2) Direction of travel from the 3-season RONI trend
+  var dirZh, dirEn;
+  if (t3==='rising'){ dirZh='，并在 升温'; dirEn=', and warming'; }
+  else if (t3==='falling'){ dirZh='，并在 降温'; dirEn=', and cooling'; }
+  else { dirZh='，大致 平稳'; dirEn=', roughly steady'; }
+  // 3) Latest weekly pulse — note if it disagrees with the slower seasonal state
+  var wkPhase = phaseOf(wkVal);
+  var pulseZh, pulseEn;
+  if (wkPhase !== phase){
+    // weekly leading the seasonal average — the telltale of a transition
+    var leanZh = wkPhase==='warm'?'偏暖':wkPhase==='cool'?'偏冷':'中性';
+    var leanEn = wkPhase==='warm'?'warm':wkPhase==='cool'?'cool':'neutral';
+    pulseZh = '。最新一周的 Niño 3.4 = '+fmt(wkVal)+'°C（'+leanZh+'），比季节平均更快反映变化 — 这通常是 过渡期 的信号';
+    pulseEn = '. The latest week\u2019s Niño 3.4 = '+fmt(wkVal)+'°C ('+leanEn+'), moving ahead of the seasonal average — usually a sign of a transition in progress';
+  } else {
+    pulseZh = '。最新一周的 Niño 3.4 = '+fmt(wkVal)+'°C，与季节状态一致';
+    pulseEn = '. The latest week\u2019s Niño 3.4 = '+fmt(wkVal)+'°C, consistent with the seasonal state';
+  }
+  // 4) Plain farm takeaway tied to the OBSERVED phase (no forecast)
+  var farmZh, farmEn;
+  if (phase==='warm' || (phase==='neutral' && wkPhase==='warm')){
+    farmZh = '。对榴莲园：注意 偏干、防火、灌溉，留意花期窗口';
+    farmEn = '. For the orchard: watch for drier conditions, fire risk, irrigation, and flowering windows';
+  } else if (phase==='cool' || (phase==='neutral' && wkPhase==='cool')){
+    farmZh = '。对榴莲园：注意 偏湿、排水、根部病害';
+    farmEn = '. For the orchard: watch for wetter conditions, drainage, and root disease';
+  } else {
+    farmZh = '。对榴莲园：雨量接近常年，按常规季候管理';
+    farmEn = '. For the orchard: rainfall near normal, manage by the usual seasonal calendar';
+  }
+  return (L==='zh')
+    ? (stateZh + dirZh + pulseZh + farmZh + '。')
+    : (stateEn + dirEn + pulseEn + farmEn + '.');
+}
+
+// Short, always-visible "second doctor" verdict under the big number.
+// Uses the OBSERVED phase, and lets the weekly pulse tip a neutral state
+// toward its leaning side (that's the real, actionable signal for a farmer).
+// Returns {icon, text} in the active language. No forecast — observed only.
+function plainVerdict(phase, wkPhase){
+  var lean = phase;
+  if (phase === 'neutral' && wkPhase !== 'neutral') lean = wkPhase; // transition tip
+  if (lean === 'warm'){
+    return { icon:'☀️', cls:'verdict-warm',
+      text: (LANG==='zh')
+        ? '偏干 — 准备灌溉、留意火患与花期'
+        : 'Leaning drier — prepare irrigation, watch fire risk & flowering' };
+  }
+  if (lean === 'cool'){
+    return { icon:'🌧️', cls:'verdict-cool',
+      text: (LANG==='zh')
+        ? '偏湿 — 注意排水与根部病害'
+        : 'Leaning wetter — watch drainage & root disease' };
+  }
+  return { icon:'⚖️', cls:'verdict-neutral',
+    text: (LANG==='zh')
+      ? '雨量接近常年 — 按常规管理'
+      : 'Rainfall near normal — manage as usual' };
+}
+
+// Expand a 3-letter season code (e.g. "MAM") to plain month names so the
+// label carries its own meaning without needing the help card.
+var SEAS_MONTHS = {
+  DJF:['12','1','2'], JFM:['1','2','3'], FMA:['2','3','4'], MAM:['3','4','5'],
+  AMJ:['4','5','6'], MJJ:['5','6','7'], JJA:['6','7','8'], JAS:['7','8','9'],
+  ASO:['8','9','10'], SON:['9','10','11'], OND:['10','11','12'], NDJ:['11','12','1']
+};
+var MON_EN = ['','Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+function seasonPlain(code){
+  var m = SEAS_MONTHS[code];
+  if (!m) return '';
+  if (LANG==='zh') return m[0]+'-'+m[1]+'-'+m[2]+'月';
+  return MON_EN[+m[0]]+'-'+MON_EN[+m[1]]+'-'+MON_EN[+m[2]];
+}
+
 /* ===================== FETCH ===================== */
 function getFeed(name){
   return fetch(PROXY + '?feed=' + name, {cache:'no-store'})
@@ -348,6 +458,11 @@ function render(roni, weekly){
   var strengthTxt = strength ? tr(strength)+' · '+phaseLabel : tr('neutral');
   var farmKey = phase==='warm'?'farmWarm':phase==='cool'?'farmCool':'farmNeutral';
 
+  // Live, data-driven "right now" sentence (observed state only).
+  var nowTxt = situationText(phase, strength, t3, latest.anom, wkLatest.nino34);
+  // Always-visible plain verdict for the hero (the 2-second takeaway).
+  var verdict = plainVerdict(phase, phaseOf(wkLatest.nino34));
+
   // spark: last 24 seasons
   var hist = roni.slice(-24);
   var maxAbs = Math.max(1.0, Math.max.apply(null, hist.map(function(h){return Math.abs(h.anom);})));
@@ -369,7 +484,8 @@ function render(roni, weekly){
       +fmt(latest.anom)+'<small>°C</small></div>'
     +'<div class="phase-label">'+phaseLabel+'</div>'
     +(strength?'<div class="strength" style="color:'+(phase==='warm'?'var(--warm)':'var(--cool)')+'">'+strengthTxt+'</div>':'')
-    +'<div class="phase-desc">RONI · '+latest.seas+' '+latest.yr+'</div>'
+    +'<div class="verdict '+verdict.cls+'"><span class="verdict-i">'+verdict.icon+'</span>'+verdict.text+'</div>'
+    +'<div class="phase-desc">RONI · '+latest.seas+' '+latest.yr+' <span class="seas-plain">('+seasonPlain(latest.seas)+')</span></div>'
   +'</div>'
 
   +'<details class="card help">'
@@ -383,15 +499,20 @@ function render(roni, weekly){
       +'<div class="helpdiv"></div>'
       +'<p>📅 '+tr('helpSeason')+'</p>'
       +'<p>🌊 '+tr('helpWhat34')+'</p>'
-      +'<p class="nowline"><b>'+tr('helpNow')+'</b>'+tr('helpNowTxt')+'</p>'
+      +'<p class="nowline"><b>'+tr('helpNow')+'</b>'+nowTxt+'</p>'
+      +'<div class="outlook">'
+        +'<div class="outlook-h">🔭 '+tr('helpOutlookLabel')+'</div>'
+        +'<p>'+tr('helpOutlookTxt')+'</p>'
+        +'<a href="https://www.cpc.ncep.noaa.gov/products/analysis_monitoring/enso_advisory/ensodisc.shtml" target="_blank" rel="noopener">'+tr('helpOutlookCheck')+'</a>'
+      +'</div>'
     +'</div>'
   +'</details>'
 
   +'<div class="card">'
     +'<div class="cardtitle"><span class="dot"></span>'+tr('roniTitle')+'</div>'
     +'<div class="cardhint">'+tr('helpRoni')+'</div>'
-    +'<div class="row"><span class="k">'+tr('latestSeason')+'</span><span class="v '+vClass+'">'+latest.seas+' '+latest.yr+' · '+fmt(latest.anom)+'</span></div>'
-    +'<div class="row"><span class="k">'+tr('prevSeason')+'</span><span class="v">'+prev.seas+' '+prev.yr+' · '+fmt(prev.anom)+'</span></div>'
+    +'<div class="row"><span class="k">'+tr('latestSeason')+'<br><span class="k-sub">'+seasonPlain(latest.seas)+'</span></span><span class="v '+vClass+'">'+latest.seas+' '+latest.yr+' · '+fmt(latest.anom)+'</span></div>'
+    +'<div class="row"><span class="k">'+tr('prevSeason')+'<br><span class="k-sub">'+seasonPlain(prev.seas)+'</span></span><span class="v">'+prev.seas+' '+prev.yr+' · '+fmt(prev.anom)+'</span></div>'
     +'<div class="row"><span class="k">'+tr('trend3')+'</span><span class="v">'+tr(t3)+'</span></div>'
   +'</div>'
 
