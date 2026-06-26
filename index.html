@@ -52,6 +52,23 @@
   .cardtitle{font-size:14px;font-weight:700;margin:0 0 10px;display:flex;
     align-items:center;gap:7px}
   .cardtitle .dot{width:8px;height:8px;border-radius:50%;background:var(--accent)}
+  .cardhint{font-size:11px;color:var(--muted);margin:-4px 0 10px;line-height:1.55}
+  .help{padding:0}
+  .help summary{
+    list-style:none;cursor:pointer;padding:14px 16px;font-size:14px;
+    font-weight:600;color:#0e7490;display:flex;align-items:center;gap:8px;
+  }
+  .help summary::-webkit-details-marker{display:none}
+  .help summary::before{content:'?';display:inline-flex;align-items:center;
+    justify-content:center;width:20px;height:20px;border-radius:50%;
+    background:#0e7490;color:#fff;font-size:12px;font-weight:700;flex-shrink:0}
+  .help[open] summary{border-bottom:1px solid var(--line)}
+  .help .helpbody{padding:6px 16px 16px}
+  .help .helpbody p{font-size:13px;line-height:1.6;margin:10px 0;color:var(--ink)}
+  .help .hl-warm{color:#991b1b} .help .hl-cool{color:#1e40af}
+  .help .hl-neutral{color:#475569}
+  .help .nowline{background:#f0f9ff;border:1px solid #bae6fd;border-radius:10px;
+    padding:11px 12px;color:#0c4a6e;margin-top:14px}
   .row{display:flex;justify-content:space-between;align-items:baseline;
     padding:7px 0;border-bottom:1px solid var(--line);font-size:14px}
   .row:last-child{border-bottom:none}
@@ -122,7 +139,7 @@
 // Set your deployed Cloudflare Worker URL here (no trailing slash).
 var PROXY = (typeof window!=='undefined' && window.ENSO_PROXY)
   ? window.ENSO_PROXY
-  : 'https://enso-proxy.standphoto.workers.dev';
+  : 'https://YOUR-WORKER.workers.dev';
 
 var THRESH = 0.5; // ±0.5 deg C ONI/RONI El Nino / La Nina threshold
 
@@ -160,6 +177,28 @@ var T = {
   strong:     {zh:'强', en:'Strong'},
   verystrong: {zh:'极强', en:'Very strong'},
   refresh:    {zh:'刷新数据', en:'Refresh data'},
+  // --- plain-language helpers ---
+  helpToggle: {zh:'这些数字是什么意思？', en:'What do these numbers mean?'},
+  helpClose:  {zh:'收起说明', en:'Hide explanation'},
+  helpIntro:  {zh:'这个 App 追踪太平洋赤道海面的温度，用来判断现在是 厄尔尼诺、拉尼娜，还是中性。这是影响马来西亚雨季旱季的大背景。',
+               en:'This app tracks the temperature of the Pacific Ocean along the equator. That tells us whether we are in El Niño, La Niña, or Neutral — the big pattern behind Malaysia\u2019s wet and dry seasons.'},
+  helpElnino: {zh:'厄尔尼诺 = 太平洋偏暖 → 马来西亚通常 偏干、少雨。要防旱、防火、留意花期。',
+               en:'El Niño = Pacific warmer than usual → Malaysia is usually drier, less rain. Watch for drought, fire, and flowering.'},
+  helpLanina: {zh:'拉尼娜 = 太平洋偏冷 → 马来西亚通常 偏湿、多雨。要防涝、防根病。',
+               en:'La Niña = Pacific cooler than usual → Malaysia is usually wetter, more rain. Watch for floods and root disease.'},
+  helpNeutral:{zh:'中性 = 不冷不暖 → 雨量接近常年，没有特别偏向。',
+               en:'Neutral = not warm, not cool → rainfall close to normal, no strong tilt either way.'},
+  helpNumber: {zh:'大数字 = 海温比正常 高几度（+）或低几度（−）。超过 +0.5 算厄尔尼诺，低于 −0.5 算拉尼娜，中间是中性。',
+               en:'The big number = how many degrees the sea is above (+) or below (−) normal. Above +0.5 = El Niño, below −0.5 = La Niña, in between = Neutral.'},
+  helpRoni:    {zh:'RONI = NOAA 官方采用的「相对海洋尼诺指数」，每月更新一次，看的是 整个季节的平均。这是判断大趋势的主指标。',
+               en:'RONI = NOAA\u2019s official "Relative Oceanic Niño Index", updated monthly, based on a whole season\u2019s average. This is the main indicator for the big trend.'},
+  helpWeekly:  {zh:'每周 Niño 3.4 = 同一片海域的 最新一周温度，更新更快。可以看最近是在升温还是降温。',
+                en:'Weekly Niño 3.4 = the latest week\u2019s temperature of the same ocean patch, updated faster. Shows whether things are warming or cooling lately.'},
+  helpTrend:   {zh:'趋势图 = 过去两年逐季的变化。红柱=厄尔尼诺，蓝柱=拉尼娜，灰柱=中性。',
+                en:'Trend chart = how each season changed over the last two years. Red = El Niño, blue = La Niña, grey = Neutral.'},
+  helpNow:     {zh:'现在的情况：', en:'Right now: '},
+  helpNowTxt:  {zh:'最近偏中性／略偏冷，但 NOAA 已发布「厄尔尼诺预警」，预计今年下半年到 2026/27 年冬季会转向厄尔尼诺、逐渐增强。简单说：正在从凉转暖的过渡期，往后几个月要开始为偏干天气做准备。',
+                en:'Recently near-neutral / slightly cool, but NOAA has issued an "El Niño Advisory" — El Niño is expected to build from the second half of this year into the 2026/27 winter. In short: we are in a cool-to-warm transition, so start preparing for drier weather in the coming months.'},
   errTitle:   {zh:'无法载入数据', en:'Could not load data'},
   errBody:    {zh:'请检查网络或 Worker 设置。NOAA 数据需经 Cloudflare Worker 代理。',
                en:'Check your network or Worker setup. NOAA feeds must be proxied via the Cloudflare Worker.'},
@@ -211,15 +250,31 @@ function parseWeekly(text){
     var nums = rest.match(/-?\d+\.?\d*/g);
     if (!nums || nums.length < 8) continue;
     nums = nums.map(parseFloat);
-    // 4 region pairs: n12_sst n12_anom n3_sst n3_anom n34_sst n34_anom n4_sst n4_anom
+    // 4 region pairs in order: n12_sst n12_anom n3_sst n3_anom
+    //                          n34_sst n34_anom n4_sst n4_anom
+    // Anomalies are the odd indices (1,3,5,7).
     rows.push({
-      date: date,
+      date:   date,
+      ts:     weekTs(date),          // sortable timestamp
       nino3:  nums[3],
       nino34: nums[5],
       nino4:  nums[7],
     });
   }
-  return rows; // chronological order as in file
+  // Guarantee chronological order regardless of any trailing/footer lines,
+  // so weekly[length-1] is always the genuine most-recent week.
+  rows.sort(function(a,b){ return a.ts - b.ts; });
+  return rows;
+}
+
+// Convert a CPC week date like "27JAN2021" into a sortable timestamp.
+var MONTHS = {JAN:0,FEB:1,MAR:2,APR:3,MAY:4,JUN:5,JUL:6,AUG:7,SEP:8,OCT:9,NOV:10,DEC:11};
+function weekTs(d){
+  var m = d.match(/^(\d{1,2})([A-Za-z]{3})(\d{4})$/);
+  if (!m) return 0;
+  var mon = MONTHS[m[2].toUpperCase()];
+  if (mon === undefined) return 0;
+  return new Date(parseInt(m[3],10), mon, parseInt(m[1],10)).getTime();
 }
 
 /* ===================== CLASSIFY ===================== */
@@ -306,8 +361,21 @@ function render(roni, weekly){
     +'<div class="phase-desc">RONI · '+latest.seas+' '+latest.yr+'</div>'
   +'</div>'
 
+  +'<details class="card help">'
+    +'<summary>'+tr('helpToggle')+'</summary>'
+    +'<div class="helpbody">'
+      +'<p>'+tr('helpIntro')+'</p>'
+      +'<p class="hl-warm">🔴 '+tr('helpElnino')+'</p>'
+      +'<p class="hl-cool">🔵 '+tr('helpLanina')+'</p>'
+      +'<p class="hl-neutral">⚪ '+tr('helpNeutral')+'</p>'
+      +'<p>📊 '+tr('helpNumber')+'</p>'
+      +'<p class="nowline"><b>'+tr('helpNow')+'</b>'+tr('helpNowTxt')+'</p>'
+    +'</div>'
+  +'</details>'
+
   +'<div class="card">'
     +'<div class="cardtitle"><span class="dot"></span>'+tr('roniTitle')+'</div>'
+    +'<div class="cardhint">'+tr('helpRoni')+'</div>'
     +'<div class="row"><span class="k">'+tr('latestSeason')+'</span><span class="v '+vClass+'">'+latest.seas+' '+latest.yr+' · '+fmt(latest.anom)+'</span></div>'
     +'<div class="row"><span class="k">'+tr('prevSeason')+'</span><span class="v">'+prev.seas+' '+prev.yr+' · '+fmt(prev.anom)+'</span></div>'
     +'<div class="row"><span class="k">'+tr('trend3')+'</span><span class="v">'+tr(t3)+'</span></div>'
@@ -315,6 +383,7 @@ function render(roni, weekly){
 
   +'<div class="card">'
     +'<div class="cardtitle"><span class="dot"></span>'+tr('weeklyTitle')+'</div>'
+    +'<div class="cardhint">'+tr('helpWeekly')+'</div>'
     +'<div class="row"><span class="k">'+tr('nino34')+' · '+tr('week')+' ('+wkLatest.date+')</span><span class="v '+(phaseOf(wkLatest.nino34))+'">'+fmt(wkLatest.nino34)+'°C</span></div>'
     +'<div class="row"><span class="k">'+tr('nino34')+' · '+tr('weekAgo')+'</span><span class="v">'+fmt(wkPrev.nino34)+'°C</span></div>'
     +'<div class="row"><span class="k">'+tr('nino3')+'</span><span class="v">'+fmt(wkLatest.nino3)+'°C</span></div>'
@@ -323,6 +392,7 @@ function render(roni, weekly){
 
   +'<div class="card">'
     +'<div class="cardtitle"><span class="dot"></span>'+tr('trendTitle')+'</div>'
+    +'<div class="cardhint">'+tr('helpTrend')+'</div>'
     +'<div class="spark">'+bars+'</div>'
     +'<div class="axis-row">'+axisLabels+'</div>'
     +'<div class="legend">'
