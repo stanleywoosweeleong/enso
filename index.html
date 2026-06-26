@@ -201,16 +201,22 @@ function parseWeekly(text){
   var rows = [];
   for (var i=0;i<lines.length;i++){
     var ln = lines[i].trim();
-    // data lines start with a date like 20Jun2026
+    // data lines start with a date like 20JUN2026
     if (!/^\d{1,2}[A-Za-z]{3}\d{4}/.test(ln)) continue;
-    var p = ln.split(/\s+/);
-    // p[0]=date, then 8 numbers: n12 a12 n3 a3 n34 a34 n4 a4
-    if (p.length < 9) continue;
+    var date = ln.match(/^\d{1,2}[A-Za-z]{3}\d{4}/)[0];
+    var rest = ln.slice(date.length);
+    // Extract every signed decimal individually. CPC glues a negative
+    // anomaly onto its SST with no space (e.g. "23.4-0.4"), so a plain
+    // whitespace split would lose columns. This regex pulls each number.
+    var nums = rest.match(/-?\d+\.?\d*/g);
+    if (!nums || nums.length < 8) continue;
+    nums = nums.map(parseFloat);
+    // 4 region pairs: n12_sst n12_anom n3_sst n3_anom n34_sst n34_anom n4_sst n4_anom
     rows.push({
-      date: p[0],
-      nino3:  parseFloat(p[4]),
-      nino34: parseFloat(p[6]),
-      nino4:  parseFloat(p[8]),
+      date: date,
+      nino3:  nums[3],
+      nino34: nums[5],
+      nino4:  nums[7],
     });
   }
   return rows; // chronological order as in file
