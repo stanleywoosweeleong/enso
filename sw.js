@@ -9,13 +9,14 @@
  * Bump CACHE_VERSION whenever index.html or this file changes, so users get
  * the new version instead of a stale cached one.
  */
-const CACHE_VERSION = 'enso-v1.0.0';
+const CACHE_VERSION = 'enso-v1.1.0';
 const SHELL = [
   './',
   './index.html',
   './manifest.json',
   './icon-192.png',
   './icon-512.png',
+  './apple-touch-icon.png',
 ];
 
 // Install: pre-cache the app shell.
