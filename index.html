@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#0c4a6e">
-<title>ENSO 监测 · El Niño Monitor</title>
+<title>ENSO Monitor · 厄尔尼诺/拉尼娜监测</title>
 <link rel="manifest" href="./manifest.json">
 <link rel="icon" type="image/png" sizes="192x192" href="./icon-192.png">
 <!-- iOS: uses its own apple-touch-icon (ignores manifest icons) -->
@@ -51,14 +51,16 @@
   }
   .status-hero{text-align:center;padding:22px 16px}
   .phase-badge{
-    display:inline-block;font-size:13px;font-weight:700;letter-spacing:.04em;
-    text-transform:uppercase;padding:5px 14px;border-radius:999px;margin-bottom:10px;
+    display:inline-block;font-size:13px;font-weight:700;letter-spacing:.02em;
+    padding:5px 14px;border-radius:999px;margin-bottom:10px;
   }
   .phase-warm{background:var(--warm-bg);color:var(--warm)}
   .phase-cool{background:var(--cool-bg);color:var(--cool)}
   .phase-neutral{background:var(--neutral-bg);color:var(--neutral)}
   .bignum{font-size:46px;font-weight:800;line-height:1;margin:6px 0}
   .bignum small{font-size:18px;font-weight:600;color:var(--muted)}
+  .anomunit{font-size:13px;font-weight:600;color:var(--muted);margin:-2px 0 2px;
+    letter-spacing:.02em}
   .phase-label{font-size:17px;font-weight:700;margin-top:4px}
   .phase-desc{font-size:13px;color:var(--muted);margin-top:8px}
   .strength{font-size:13px;font-weight:600;margin-top:6px}
@@ -177,15 +179,15 @@
 <body>
 <div class="boot" id="boot">
   <div class="spinner" style="border-top-color:#fff"></div>
-  <h2>ENSO 监测</h2>
-  <p>El Niño / La Niña Monitor</p>
+  <h2>厄尔尼诺/拉尼娜监测</h2>
+  <p>ENSO Monitor</p>
 </div>
 
 <header>
   <div class="htop">
     <div>
-      <h1 id="t-title">厄尔尼诺监测</h1>
-      <div class="sub" id="t-sub">海洋尼诺指数 · 实时追踪</div>
+      <h1 id="t-title">厄尔尼诺/拉尼娜监测</h1>
+      <div class="sub" id="t-sub">RONI 指数 · 厄尔尼诺与拉尼娜</div>
     </div>
     <div class="hbtns">
       <button class="infobtn" id="infobtn" onclick="openHelp()" aria-label="info">
@@ -236,10 +238,11 @@ var LANG_LBL   = { zh:'中', en:'EN' };
 var LANG = localStorage.getItem('enso-lang') || 'zh';
 var HELP_STATE = null; // live values for the info-guide overlay, set in render()
 var T = {
-  title:      {zh:'厄尔尼诺监测', en:'El Niño Monitor'},
-  sub:        {zh:'海洋尼诺指数 · 实时追踪', en:'Oceanic Niño Index · live tracking'},
+  title:      {zh:'厄尔尼诺/拉尼娜监测', en:'ENSO Monitor'},
+  sub:        {zh:'RONI 指数 · 厄尔尼诺与拉尼娜', en:'RONI index · El Niño & La Niña'},
   loading:    {zh:'正在载入 NOAA 数据…', en:'Loading NOAA data…'},
   curStatus:  {zh:'当前状态', en:'Current status'},
+  anomUnit:   {zh:'°C 距平', en:'°C anomaly'},
   roniTitle:  {zh:'RONI · 官方指数（季）', en:'RONI · official index (seasonal)'},
   weeklyTitle:{zh:'每周 Niño 3.4 海温距平', en:'Weekly Niño 3.4 SST anomaly'},
   trendTitle: {zh:'近 24 季趋势', en:'Last 24 seasons trend'},
@@ -683,8 +686,8 @@ function render(roni, weekly, cachedAt){
   +'<div class="card status-hero">'
     +'<div class="phase-badge '+phaseClass+'">'+phaseCond+'</div>'
     +'<div class="bignum '+vClass+'" style="color:'+(phase==='warm'?'var(--warm)':phase==='cool'?'var(--cool)':'var(--ink)')+'">'
-      +fmt(latest.anom)+'<small>°C</small></div>'
-    +'<div class="phase-label">'+phaseLabel+'</div>'
+      +fmt(latest.anom)+'</div>'
+    +'<div class="anomunit">'+tr('anomUnit')+'</div>'
     +(strength?'<div class="strength" style="color:'+(phase==='warm'?'var(--warm)':'var(--cool)')+'">'+strengthTxt+'</div>':'')
     +'<div class="phase-desc">RONI · '+latest.seas+' '+latest.yr+' <span class="seas-plain">('+seasonPlain(latest.seas)+')</span></div>'
     +'<div class="verdict '+verdict.cls+'"><span class="verdict-i">'+verdict.icon+'</span>'+verdict.text+'</div>'
