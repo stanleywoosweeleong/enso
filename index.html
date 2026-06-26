@@ -79,6 +79,10 @@
   .help .nowline{background:#f0f9ff;border:1px solid #bae6fd;border-radius:10px;
     padding:11px 12px;color:#0c4a6e;margin-top:14px}
   .help .helpdiv{height:1px;background:var(--line);margin:14px 0 4px}
+  .help .maptitle{font-size:13px;font-weight:700;color:#0c4a6e;margin:14px 0 6px}
+  .help .mapwrap{background:#f8fafc;border:1px solid var(--line);border-radius:10px;
+    padding:8px}
+  .help .ninomap{display:block;width:100%;height:auto}
   .help .outlook{background:#fffbeb;border:1px solid #fde68a;border-radius:10px;
     padding:11px 12px;margin-top:10px}
   .help .outlook-h{font-size:12px;font-weight:700;color:#92400e;margin-bottom:6px}
@@ -138,7 +142,7 @@
       <h1 id="t-title">厄尔尼诺监测</h1>
       <div class="sub" id="t-sub">海洋尼诺指数 · 实时追踪</div>
     </div>
-    <button class="langbtn" id="langbtn" onclick="toggleLang()">EN</button>
+    <button class="langbtn" id="langbtn" onclick="toggleLang()">中</button>
   </div>
 </header>
 
@@ -165,6 +169,10 @@ var PROXY = (typeof window!=='undefined' && window.ENSO_PROXY)
 var THRESH = 0.5; // ±0.5 deg C ONI/RONI El Nino / La Nina threshold
 
 /* ===================== I18N ===================== */
+// Language cycle. Add 'ms' (BM) or 'ta' (Tamil) here later and the toggle
+// keeps working — one tap advances to the next, label shows current language.
+var LANG_CYCLE = ['zh','en'];
+var LANG_LBL   = { zh:'中', en:'EN' };
 var LANG = localStorage.getItem('enso-lang') || 'zh';
 var T = {
   title:      {zh:'厄尔尼诺监测', en:'El Niño Monitor'},
@@ -217,6 +225,18 @@ var T = {
                en:'Niño 3.4 = the name of a fixed patch of ocean on the equator in the central Pacific (near the date line, far from Malaysia). Scientists use it because its sea temperature best reflects El Niño / La Niña. The number beside it is NOT the actual water temperature — it\u2019s how many degrees above or below normal. RONI and "Weekly Niño 3.4" read the same patch: RONI is a 3-month average (slow, steady), the weekly is the latest single week (fast, jumpy).'},
   helpRoni:    {zh:'RONI = NOAA 官方采用的「相对海洋尼诺指数」，每月更新一次，看的是 整个季节的平均。这是判断大趋势的主指标。',
                en:'RONI = NOAA\u2019s official "Relative Oceanic Niño Index", updated monthly, based on a whole season\u2019s average. This is the main indicator for the big trend.'},
+  mapTitle:   {zh:'四个监测海域（由西到东）', en:'The four monitoring boxes (west to east)'},
+  mapWest:    {zh:'西', en:'West'},
+  mapEast:    {zh:'东', en:'East'},
+  mapN4:      {zh:'中部，最靠近亚洲', en:'central, nearest Asia'},
+  mapN34sub:  {zh:'主指标', en:'the main one'},
+  mapN3:      {zh:'东太平洋', en:'eastern Pacific'},
+  mapN12:     {zh:'近岸', en:'coast'},
+  mapMY:      {zh:'马来西亚 / 你的果园', en:'Malaysia / your orchard'},
+  mapMYsub:   {zh:'最西端 — 厄尔尼诺时这里通常偏干', en:'far west — El Niño tends to be drier here'},
+  mapSA:      {zh:'南美洲', en:'S. America'},
+  mapFoot:    {zh:'Niño 3.4 跨在 Niño 3 与 Niño 4 之间 — 所以叫「3.4」',
+               en:'Niño 3.4 straddles Niño 3 and Niño 4 — that\u2019s why it\u2019s "3.4"'},
   helpWeekly:  {zh:'每周 Niño 3.4 = 同一片海域的 最新一周温度，更新更快。可以看最近是在升温还是降温。',
                 en:'Weekly Niño 3.4 = the latest week\u2019s temperature of the same ocean patch, updated faster. Shows whether things are warming or cooling lately.'},
   helpTrend:   {zh:'趋势图 = 过去两年逐季的变化。红柱=厄尔尼诺，蓝柱=拉尼娜，灰柱=中性。',
@@ -414,6 +434,50 @@ function seasonPlain(code){
   return MON_EN[+m[0]]+'-'+MON_EN[+m[1]]+'-'+MON_EN[+m[2]];
 }
 
+// Inline SVG map of the four Nino regions, west->east, with Malaysia marked.
+// Pure SVG so it works offline. viewBox scales to the card width on phone.
+function ninoMap(){
+  var t = function(k){ return tr(k); };
+  return ''
+  +'<svg viewBox="0 0 360 250" class="ninomap" role="img" aria-label="Niño regions map">'
+    // ocean strip
+    +'<rect x="6" y="70" width="348" height="86" rx="7" fill="#e0f2fe" stroke="#7dd3fc" stroke-width="1"/>'
+    // equator
+    +'<line x1="6" y1="113" x2="354" y2="113" stroke="#0284c7" stroke-width="1" stroke-dasharray="3 3" opacity="0.6"/>'
+    +'<text x="30" y="129" font-size="8" fill="#0369a1">'+ (LANG==='zh'?'赤道':'Equator') +'</text>'
+    // west / east end caps
+    +'<rect x="6" y="86" width="20" height="54" rx="3" fill="#e2e8f0" stroke="#cbd5e1" stroke-width="1"/>'
+    +'<text x="16" y="64" font-size="9" fill="#64748b" text-anchor="middle">'+t('mapWest')+'</text>'
+    +'<rect x="334" y="86" width="20" height="54" rx="3" fill="#e2e8f0" stroke="#cbd5e1" stroke-width="1"/>'
+    +'<text x="344" y="64" font-size="9" fill="#64748b" text-anchor="middle">'+t('mapEast')+'</text>'
+    // Nino 4 (central, teal-ish)
+    +'<rect x="70" y="86" width="88" height="30" rx="4" fill="#ccfbf1" stroke="#5eead4" stroke-width="1"/>'
+    +'<text x="114" y="99" font-size="10" font-weight="bold" fill="#0f766e" text-anchor="middle">Niño 4</text>'
+    +'<text x="114" y="111" font-size="7.5" fill="#0f766e" text-anchor="middle">'+t('mapN4')+'</text>'
+    // Nino 3 (eastern, coral) - lower row
+    +'<rect x="205" y="124" width="108" height="28" rx="4" fill="#fee2d5" stroke="#fdba8c" stroke-width="1"/>'
+    +'<text x="259" y="137" font-size="10" font-weight="bold" fill="#9a3412" text-anchor="middle">Niño 3</text>'
+    +'<text x="259" y="148" font-size="7.5" fill="#9a3412" text-anchor="middle">'+t('mapN3')+'</text>'
+    // Nino 3.4 (the star, amber, emphasized) - overlaps 3 and 4
+    +'<rect x="158" y="90" width="112" height="34" rx="4" fill="#fef3c7" stroke="#f59e0b" stroke-width="2"/>'
+    +'<text x="214" y="104" font-size="10.5" font-weight="bold" fill="#92400e" text-anchor="middle">Niño 3.4 ★</text>'
+    +'<text x="214" y="116" font-size="7.5" fill="#92400e" text-anchor="middle">'+t('mapN34sub')+'</text>'
+    // Nino 1+2 (small, pink, far east)
+    +'<rect x="316" y="86" width="34" height="30" rx="3" fill="#fce7f0" stroke="#f0abc8" stroke-width="1"/>'
+    +'<text x="333" y="99" font-size="9" font-weight="bold" fill="#9d174d" text-anchor="middle">1+2</text>'
+    +'<text x="333" y="110" font-size="7" fill="#9d174d" text-anchor="middle">'+t('mapN12')+'</text>'
+    // Malaysia marker (west)
+    +'<circle cx="16" cy="180" r="5" fill="#0f766e"/>'
+    +'<text x="26" y="177" font-size="9" font-weight="bold" fill="#0f766e">'+t('mapMY')+'</text>'
+    +'<text x="26" y="190" font-size="7.5" fill="#475569">'+t('mapMYsub')+'</text>'
+    // South America marker (east)
+    +'<circle cx="344" cy="210" r="5" fill="#9a3412"/>'
+    +'<text x="336" y="207" font-size="9" font-weight="bold" fill="#9a3412" text-anchor="end">'+t('mapSA')+'</text>'
+    // footnote
+    +'<text x="180" y="238" font-size="8" fill="#854d0e" text-anchor="middle">★ '+t('mapFoot')+'</text>'
+  +'</svg>';
+}
+
 /* ===================== FETCH ===================== */
 function getFeed(name){
   return fetch(PROXY + '?feed=' + name, {cache:'no-store'})
@@ -499,6 +563,8 @@ function render(roni, weekly){
       +'<div class="helpdiv"></div>'
       +'<p>📅 '+tr('helpSeason')+'</p>'
       +'<p>🌊 '+tr('helpWhat34')+'</p>'
+      +'<div class="maptitle">🗺️ '+tr('mapTitle')+'</div>'
+      +'<div class="mapwrap">'+ninoMap()+'</div>'
       +'<p class="nowline"><b>'+tr('helpNow')+'</b>'+nowTxt+'</p>'
       +'<div class="outlook">'
         +'<div class="outlook-h">🔭 '+tr('helpOutlookLabel')+'</div>'
@@ -561,22 +627,25 @@ function renderError(e){
 }
 
 /* ===================== LANG ===================== */
-function toggleLang(){
-  LANG = (LANG==='zh')?'en':'zh';
-  localStorage.setItem('enso-lang', LANG);
+function applyLang(){
   document.documentElement.lang = LANG;
-  document.getElementById('langbtn').textContent = (LANG==='zh')?'EN':'中文';
+  // Button always shows the language the UI is currently in.
+  document.getElementById('langbtn').textContent = LANG_LBL[LANG];
   document.getElementById('t-title').textContent = tr('title');
   document.getElementById('t-sub').textContent = tr('sub');
+}
+function toggleLang(){
+  // One tap: advance to the next language in the cycle and re-render.
+  var i = LANG_CYCLE.indexOf(LANG);
+  LANG = LANG_CYCLE[(i + 1) % LANG_CYCLE.length];
+  localStorage.setItem('enso-lang', LANG);
+  applyLang();
   load();
 }
 
 /* ===================== BOOT ===================== */
 function boot(){
-  document.getElementById('langbtn').textContent = (LANG==='zh')?'EN':'中文';
-  document.getElementById('t-title').textContent = tr('title');
-  document.getElementById('t-sub').textContent = tr('sub');
-  document.documentElement.lang = LANG;
+  applyLang();
   setTimeout(function(){
     var b = document.getElementById('boot');
     if (b) b.style.display='none';
