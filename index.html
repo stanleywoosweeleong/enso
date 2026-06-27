@@ -279,6 +279,46 @@ var T = {
                en:'Negative IOD usually brings wetter-than-normal rainfall and more morning rain to our region. It often coincides with La Niña and points the same wet way; when both align, rain is heavier. But IOD can also act on its own, so watch it even when ENSO is neutral: mind drainage, root disease, and time your spraying and harvesting carefully.'},
   iodFarmNeu: {zh:'IOD 中性 — 印度洋方向对雨量没有明显偏移，按常规管理即可，主要看上方 ENSO 与短期天气预报。',
                en:'IOD-neutral — the Indian Ocean adds no strong rainfall tilt; manage as usual and rely mainly on ENSO above and short-range forecasts.'},
+  // ---- MJO (Madden–Julian Oscillation) ----
+  mjoTitle:   {zh:'季内振荡 (MJO)', en:'Madden–Julian Oscillation (MJO)'},
+  mjoHint:    {zh:'MJO = 一团增强降雨，每 30–60 天自西向东绕赤道移动。它落在我们头顶（第 3–5 位相）时，未来 1–2 周通常更湿、雷雨更多；走到对面时则偏干。比 ENSO／IOD 更短期，填补「未来一两周」的空档。数据：BOM RMM 指数，每日更新。',
+               en:'MJO = a pulse of enhanced rain that travels east around the equator every 30–60 days. When it sits over us (phases 3–5), the next 1–2 weeks tend to be wetter with more thunderstorms; on the opposite side it tilts drier. Shorter-term than ENSO/IOD — it fills the "next week or two" gap. Data: BOM RMM index, daily.'},
+  mjoPhaseLbl:{zh:'位相', en:'Phase'},
+  mjoAmpLbl:  {zh:'振幅', en:'Amplitude'},
+  mjoRegionLbl:{zh:'活跃位置', en:'Active over'},
+  mjoUnit:    {zh:'位相 1–8 · 振幅（>1 才算活跃）', en:'phase 1–8 · amplitude (>1 = active)'},
+  // amplitude states
+  mjoWeakBadge:{zh:'MJO 弱／不活跃', en:'MJO weak / inactive'},
+  mjoActiveBadge:{zh:'MJO 活跃', en:'MJO active'},
+  mjoWeakNote:{zh:'目前 MJO 振幅 < 1，信号弱、不连贯——这段时间它对本区雨量没有清楚的推动。可暂时忽略，主要看 ENSO 与短期天气预报。',
+               en:'MJO amplitude is currently < 1, so the signal is weak and incoherent — it gives no clear push to our rainfall right now. Safe to set aside for now; rely on ENSO and short-range forecasts.'},
+  // wet/dry/transition meaning (only shown when active)
+  mjoWet:     {zh:'本区趋湿', en:'wetter tilt for our region'},
+  mjoDry:     {zh:'本区趋干', en:'drier tilt for our region'},
+  mjoTrans:   {zh:'过渡位相', en:'transition phase'},
+  // region names by phase
+  mjoRegWHemAfr:{zh:'西半球／非洲', en:'W. Hemisphere / Africa'},
+  mjoRegIndian: {zh:'印度洋', en:'Indian Ocean'},
+  mjoRegMaritime:{zh:'海洋大陆（我们这里）', en:'Maritime Continent (us)'},
+  mjoRegWPac:   {zh:'西太平洋', en:'Western Pacific'},
+  mjoRegPac:    {zh:'太平洋', en:'Pacific'},
+  // farm advice
+  mjoFarmWet: {zh:'MJO 正经过本区（第 {p} 位相）——未来约 1–2 周降雨与雷雨偏多。安排好喷药与采收时段，注意排水与园区通行。',
+               en:'MJO is passing over us (phase {p}) — expect more rain and thunderstorms over the next 1–2 weeks. Time spraying and harvesting around it; mind drainage and access.'},
+  mjoFarmDry: {zh:'MJO 走到对侧（第 {p} 位相）——未来约 1–2 周偏干、雨水受抑制。利于喷药与采收，但注意灌溉与火患。',
+               en:'MJO is on the opposite side (phase {p}) — the next 1–2 weeks tilt drier with suppressed rain. Good for spraying and harvesting, but watch irrigation and fire risk.'},
+  mjoFarmTrans:{zh:'MJO 处于过渡位相（第 {p} 位相）——对本区雨量没有明显推动，留意它接下来是否东移过境。',
+               en:'MJO is in a transition phase (phase {p}) — no strong push on our rainfall; watch whether it moves over us next.'},
+  mjoFarmWeak:{zh:'MJO 目前弱／不活跃，对本区雨量没有清楚推动。',
+               en:'MJO is currently weak/inactive — no clear push on our rainfall.'},
+  // help guide
+  helpMjo:    {zh:'🌀 季内振荡 (MJO)：一团增强降雨（雷雨云团），每 30–60 天自西向东绕赤道移动一圈，分成 8 个「位相」表示它此刻在地球哪个位置。第 3–5 位相 = 落在海洋大陆（含马来西亚）头顶 → 本区未来 1–2 周偏湿、雷雨多；第 7–8–1 位相 = 走到对面 → 本区偏干；第 2、6 位相为过渡。只有当「振幅 > 1」时 MJO 才算活跃、值得参考；< 1 时信号弱可忽略。MJO 比 ENSO／IOD 短得多——ENSO／IOD 看「这个季节」，MJO 看「未来一两周」，最贴近喷药、采收、农活的安排。注意：精确的位相—降雨对应会随季节略有移动，所以这是趋势参考，不是精确预报。',
+               en:'🌀 Madden–Julian Oscillation (MJO): a pulse of enhanced rain (thunderstorm clusters) that circles the equator eastward every 30–60 days. Its lifecycle is split into 8 "phases" showing where it sits right now. Phases 3–5 = over the Maritime Continent (including Malaysia) → wetter here, more thunderstorms for the next 1–2 weeks; phases 7–8–1 = opposite side → drier here; phases 2 & 6 are transitions. The MJO only counts as active when amplitude > 1; below that the signal is weak and can be ignored. MJO is much shorter-term than ENSO/IOD — ENSO/IOD describe "this season," MJO describes "the next week or two," which is closest to spraying, harvesting, and fieldwork timing. Note: the exact phase-to-rainfall mapping shifts a little by season, so treat this as a tendency, not an exact forecast.'},
+  mjoOutlookLabel:{zh:'BOM 官方 MJO 页面', en:'BOM official MJO page'},
+  mjoOutlookTxt:{zh:'澳洲气象局 (BOM) 每日更新 MJO（RMM）相位图，并有未来传播的模式预测。本 App 的 MJO 数值取自该页的 RMM 文件。',
+                 en:'The Bureau of Meteorology (BOM) updates the MJO (RMM) phase diagram daily and shows model forecasts of its propagation. This app reads the RMM file from that page.'},
+  mjoOutlookCheck:{zh:'查看 BOM 最新 MJO ↗', en:'Check BOM\u2019s latest MJO ↗'},
+  mjoNowLabel:{zh:'现在的情况（BOM 每日）：', en:'Right now (daily from BOM): '},
   iodUnit:    {zh:'°C · IOD 指数（BOM 每周）', en:'°C · IOD index (BOM weekly)'},
   iodSlow:    {zh:'', en:''},
   iodAged:    {zh:'⚠️ IOD 数值日期为 {m}，可能已过期，需检查更新。暂不显示农事建议。',
@@ -439,7 +479,28 @@ function parseDMI(text){
   out.sort(function(a,b){ return (a.year-b.year) || (a.month-b.month); });
   return out;
 }
-// wksst9120.for : header rows then data lines. Two possible NOAA layouts:
+// rmm.74toRealtime.txt (BOM MJO RMM index): 2 header lines, then daily rows:
+//   year month day RMM1 RMM2 phase amplitude method
+// Missing values are 1.E36 or 999. Returns the latest valid row as
+// {year,month,day,rmm1,rmm2,phase,amp} or null if none.
+function parseMJO(text){
+  if (!text) return null;
+  var lines = text.trim().split(/\r?\n/);
+  var last = null;
+  for (var i=0;i<lines.length;i++){
+    var p = lines[i].trim().split(/\s+/);
+    if (p.length < 7) continue;
+    if (!/^\d{4}$/.test(p[0])) continue;        // skip header/non-data lines
+    var year=parseInt(p[0],10), mon=parseInt(p[1],10), day=parseInt(p[2],10);
+    var rmm1=parseFloat(p[3]), rmm2=parseFloat(p[4]);
+    var phase=parseInt(p[5],10), amp=parseFloat(p[6]);
+    // reject missing-value rows (1.E36 or 999 flags)
+    if (!isFinite(amp) || amp>100 || isNaN(phase) || phase<1 || phase>8) continue;
+    if (Math.abs(rmm1)>100 || Math.abs(rmm2)>100) continue;
+    last = { year:year, month:mon, day:day, rmm1:rmm1, rmm2:rmm2, phase:phase, amp:amp };
+  }
+  return last; // latest valid row (file is chronological)
+}
 //  (A) SST+anomaly pairs (8 numbers): "20JUN2026  22.1 0.4  25.3 0.7  27.6 1.4  28.9 0.9"
 //  (B) anomaly-only (4 numbers):      "20JUN2026  0.4  0.7  1.4  0.9"
 // The parser detects which by counting numbers, so it works either way.
@@ -518,6 +579,24 @@ function monthName(m){
   var en = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   if (LANG === 'zh') return m + '月';
   return en[m-1] || ('M'+m);
+}
+// MJO interpretation. Amplitude < 1 = weak/inactive (no usable signal).
+var MJO_ACTIVE = 1.0;
+// Which geographic region the MJO convection sits over, by phase (1-8).
+function mjoRegionKey(phase){
+  if (phase===1)            return 'mjoRegWHemAfr'; // W Hemisphere / Africa
+  if (phase===2||phase===3) return 'mjoRegIndian';  // Indian Ocean
+  if (phase===4||phase===5) return 'mjoRegMaritime';// Maritime Continent (us)
+  if (phase===6||phase===7) return 'mjoRegWPac';    // Western Pacific
+  return 'mjoRegPac';                               // phase 8: Pacific
+}
+// Effect on OUR region (Maritime Continent / Malaysia), by phase.
+// Robust core: phases 3-5 enhance rain here; 7-8-1 suppress; 2 & 6 transition.
+// Only meaningful when amplitude >= 1 (checked by caller).
+function mjoEffect(phase){
+  if (phase===3||phase===4||phase===5) return 'wet';
+  if (phase===7||phase===8||phase===1) return 'dry';
+  return 'transition'; // 2 or 6
 }
 function fmt(n){ return (n>=0?'+':'') + n.toFixed(2); }
 // Format a cache timestamp as a short local date+time for the offline banner.
@@ -694,6 +773,57 @@ function bomDateTs(s){
   return ts;
 }
 
+// Builds the MJO card from a parsed RMM row {phase,amp,...}. Shows phase,
+// amplitude, the region the MJO sits over, and the plain wet/dry meaning for
+// our region. When amplitude < 1 the MJO is inactive: we say so and give no
+// rain advice. Returns '' if no MJO data (keeps the rest of the app working).
+function mjoCard(mjo){
+  if (!mjo) return '';
+  var active = mjo.amp >= MJO_ACTIVE;
+  var eff = mjoEffect(mjo.phase); // wet/dry/transition
+  var dateTxt = monthName(mjo.month)+' '+mjo.day+', '+mjo.year;
+  var badgeCls, badgeLbl, col;
+  if (!active){
+    badgeCls='phase-neutral'; badgeLbl=tr('mjoWeakBadge'); col='var(--ink)';
+  } else if (eff==='wet'){
+    badgeCls='phase-cool'; badgeLbl=tr('mjoActiveBadge'); col='var(--cool)';
+  } else if (eff==='dry'){
+    badgeCls='phase-warm'; badgeLbl=tr('mjoActiveBadge'); col='var(--warm)';
+  } else {
+    badgeCls='phase-neutral'; badgeLbl=tr('mjoActiveBadge'); col='var(--ink)';
+  }
+  var meaning = !active ? '' :
+    (eff==='wet'?tr('mjoWet'):eff==='dry'?tr('mjoDry'):tr('mjoTrans'));
+
+  var html = '<div class="card">'
+    +'<div class="cardtitle"><span class="dot"></span>'+tr('mjoTitle')+'</div>'
+    +'<div class="cardhint">'+tr('mjoHint')+'</div>'
+    +'<div class="iodhead">'
+      +'<span class="phase-badge '+badgeCls+'">'+badgeLbl+'</span>'
+      +'<div class="iodnum" style="color:'+col+'">'+mjo.phase+'<span style="font-size:18px;font-weight:600;color:var(--muted)"> · '+mjo.amp.toFixed(2)+'</span></div>'
+      +'<div class="anomunit">'+tr('mjoUnit')+'</div>'
+    +'</div>';
+  if (!active){
+    html += '<div class="iodage">'+tr('mjoWeakNote')+'</div>';
+  } else if (meaning){
+    var mc = eff==='wet'?'cool':eff==='dry'?'warm':'';
+    html += '<div class="row" style="margin-top:8px"><span class="k">'+tr('mjoRegionLbl')+'</span><span class="v">'+tr(mjoRegionKey(mjo.phase))+'</span></div>'
+      +'<div class="row"><span class="k">'+tr('mjoPhaseLbl')+' · '+tr('mjoAmpLbl')+'</span><span class="v '+mc+'">'+tr(eff==='wet'?'mjoWet':eff==='dry'?'mjoDry':'mjoTrans')+'</span></div>';
+  }
+  html += '<div class="row"><span class="k">'+tr('mjoNowLabel').replace(/[:：]\s*$/,'')+'</span><span class="v" style="font-weight:400;color:var(--muted)">'+dateTxt+'</span></div>'
+    +'<div class="row"><span class="k">'+tr('iodSrc')+'</span><span class="v iodsrc">BOM</span></div>'
+  +'</div>';
+  return html;
+}
+// MJO orchard-advice line for the "what it means" card, or '' if inactive/absent.
+function mjoFarmLine(mjo){
+  if (!mjo) return '';
+  if (mjo.amp < MJO_ACTIVE) return tr('mjoFarmWeak');
+  var eff = mjoEffect(mjo.phase);
+  var key = eff==='wet'?'mjoFarmWet':eff==='dry'?'mjoFarmDry':'mjoFarmTrans';
+  return tr(key).replace('{p}', mjo.phase);
+}
+
 // Inline SVG map of the four Nino regions, west->east, with Malaysia marked.
 // Pure SVG so it works offline. viewBox scales to the card width on phone.
 function ninoMap(){  var t = function(k){ return tr(k); };
@@ -771,6 +901,65 @@ function iodMap(){  var t = function(k){ return tr(k); };
   +'</svg>';
 }
 
+// MJO phase wheel: the standard 8-phase RMM diagram. Highlights the current
+// phase, marks the Maritime Continent (phases 4-5, "us"), and plots the
+// current (RMM1,RMM2) point. mjo = parsed row or null.
+function mjoWheel(mjo){  var t = function(k){ return tr(k); };
+  var cx=130, cy=125, R=92, rIn=26;
+  // Phase sectors: RMM phase space is split into 8 wedges. Phase boundaries are
+  // at 0,45,90...315 deg but rotated so phases match the WH04 convention.
+  // We draw 8 wedges starting at angle for each phase. Mapping (standard RMM):
+  //  phase 1: 180-225, 2: 225-270, 3: 270-315, 4: 315-360,
+  //  phase 5: 0-45, 6: 45-90, 7: 90-135, 8: 135-180  (math angles, CCW from +x)
+  function pol(ang,r){ var a=ang*Math.PI/180; return [cx+r*Math.cos(a), cy - r*Math.sin(a)]; }
+  function wedge(a0,a1,fill){
+    var p0=pol(a0,rIn), p1=pol(a0,R), p2=pol(a1,R), p3=pol(a1,rIn);
+    return '<path d="M'+p0[0].toFixed(1)+' '+p0[1].toFixed(1)
+      +'L'+p1[0].toFixed(1)+' '+p1[1].toFixed(1)
+      +'A'+R+' '+R+' 0 0 0 '+p2[0].toFixed(1)+' '+p2[1].toFixed(1)
+      +'L'+p3[0].toFixed(1)+' '+p3[1].toFixed(1)
+      +'A'+rIn+' '+rIn+' 0 0 1 '+p0[0].toFixed(1)+' '+p0[1].toFixed(1)
+      +'Z" fill="'+fill+'" stroke="#cbd5e1" stroke-width="0.7"/>';
+  }
+  // phase -> [startAngle,endAngle] in math degrees (CCW)
+  var PH={1:[180,225],2:[225,270],3:[270,315],4:[315,360],5:[0,45],6:[45,90],7:[90,135],8:[135,180]};
+  var cur = mjo ? mjo.phase : 0;
+  var active = mjo && mjo.amp>=1;
+  var svg='<svg viewBox="0 0 260 250" class="ninomap" role="img" aria-label="MJO phase wheel">';
+  // wedges
+  for (var ph=1; ph<=8; ph++){
+    var a=PH[ph];
+    // colour: current phase highlighted by its effect; Maritime (4,5) tinted
+    var fill='#f1f5f9';
+    if (ph===4||ph===5) fill='#fef9c3';                 // Maritime band (us)
+    if (active && ph===cur){
+      var e=mjoEffect(ph); fill = e==='wet'?'#bfdbfe':e==='dry'?'#fecaca':'#e2e8f0';
+    }
+    svg+=wedge(a[0],a[1],fill);
+    // phase number label at mid-angle
+    var mid=(a[0]+a[1])/2, lp=pol(mid,(R+rIn)/2);
+    svg+='<text x="'+lp[0].toFixed(1)+'" y="'+(lp[1]+3).toFixed(1)+'" font-size="10" font-weight="bold" fill="#475569" text-anchor="middle">'+ph+'</text>';
+  }
+  // amplitude=1 circle (the "active" threshold)
+  svg+='<circle cx="'+cx+'" cy="'+cy+'" r="'+rIn+'" fill="#fff" stroke="#94a3b8" stroke-width="1" stroke-dasharray="2 2"/>';
+  svg+='<text x="'+cx+'" y="'+(cy+3)+'" font-size="7" fill="#64748b" text-anchor="middle">amp 1</text>';
+  // region labels around the ring
+  svg+='<text x="'+cx+'" y="18" font-size="8.5" fill="#64748b" text-anchor="middle">'+t('mjoRegWPac')+'</text>';
+  svg+='<text x="'+cx+'" y="244" font-size="8.5" font-weight="bold" fill="#a16207" text-anchor="middle">'+t('mjoRegMaritime')+'</text>';
+  svg+='<text x="6" y="'+(cy+3)+'" font-size="8.5" fill="#64748b" text-anchor="start">'+t('mjoRegIndian')+'</text>';
+  svg+='<text x="254" y="'+(cy+3)+'" font-size="8.5" fill="#64748b" text-anchor="end">'+t('mjoRegPac')+'</text>';
+  // plot current point (RMM1=x, RMM2=y), scaled so amp 1 sits at rIn ring
+  if (mjo){
+    var scale=(R)/3; // assume ~3 is near max amplitude for plotting
+    var px=cx + mjo.rmm1*scale, py=cy - mjo.rmm2*scale;
+    // clamp into view
+    px=Math.max(cx-R,Math.min(cx+R,px)); py=Math.max(cy-R,Math.min(cy+R,py));
+    svg+='<circle cx="'+px.toFixed(1)+'" cy="'+py.toFixed(1)+'" r="5" fill="#0f766e" stroke="#fff" stroke-width="1.5"/>';
+  }
+  svg+='</svg>';
+  return svg;
+}
+
 // Offline QR code for the app URL (https://stanleywoosweeleong.github.io/enso/).
 // Matrix baked in as a static SVG path so it works with no network. The URL is
 // fixed, so this never needs regenerating unless the deployment URL changes.
@@ -796,23 +985,25 @@ function load(){
   var app = document.getElementById('app');
   app.innerHTML = '<div class="loading" id="loading"><div class="spinner"></div><div>'
     + tr('loading') + '</div></div>';
-  // IOD is a bonus feed: if it fails we still show ENSO. So its fetch never
-  // rejects the whole Promise.all — it resolves to null on failure.
+  // IOD and MJO are bonus feeds: if either fails we still show ENSO. Their
+  // fetches never reject the whole Promise.all — they resolve to null on failure.
   var iodFeed = getFeed('iod').catch(function(){ return null; });
-  Promise.all([ getFeed('roni'), getFeed('weekly'), iodFeed ])
+  var mjoFeed = getFeed('mjo').catch(function(){ return null; });
+  Promise.all([ getFeed('roni'), getFeed('weekly'), iodFeed, mjoFeed ])
     .then(function(res){
       var roni = parseSeasonal(res[0], 2);   // RONI anom in col 2
       var weekly = parseWeekly(res[1]);
       if (!roni.length || !weekly.length) throw new Error('empty parse');
       // IOD comes back as JSON {ok,value,asOf} from the Worker's BOM scrape.
       var iod = parseIod(res[2]);
+      var mjo = parseMJO(res[3]);
       // Save the fresh feeds so the app can show them next time it's offline.
       try {
         localStorage.setItem('enso-cache', JSON.stringify({
-          roni: res[0], weekly: res[1], iod: res[2] || '', at: Date.now()
+          roni: res[0], weekly: res[1], iod: res[2] || '', mjo: res[3] || '', at: Date.now()
         }));
       } catch(e){ /* storage full or blocked — ignore */ }
-      render(roni, weekly, null, iod);
+      render(roni, weekly, null, iod, mjo);
     })
     .catch(function(e){
       // Fetch failed (likely offline). Fall back to the last-saved data.
@@ -822,7 +1013,8 @@ function load(){
         var roni = parseSeasonal(raw.roni, 2);
         var weekly = parseWeekly(raw.weekly);
         var iod = parseIod(raw.iod);
-        if (roni.length && weekly.length) { render(roni, weekly, raw.at, iod); return; }
+        var mjo = parseMJO(raw.mjo);
+        if (roni.length && weekly.length) { render(roni, weekly, raw.at, iod, mjo); return; }
       }
       renderError(e); // no cache to fall back on
     });
@@ -841,7 +1033,7 @@ function parseIod(text){
 }
 
 /* ===================== RENDER ===================== */
-function render(roni, weekly, cachedAt, iod){
+function render(roni, weekly, cachedAt, iod, mjo){
   var latest = roni[roni.length-1];
   var prev   = roni[roni.length-2] || latest;
   var phase  = phaseOf(latest.anom);
@@ -881,7 +1073,7 @@ function render(roni, weekly, cachedAt, iod){
   // Stash the inputs so the info-guide overlay can regenerate this live text
   // (and in the current language) whenever it is opened.
   HELP_STATE = { phase:phase, strength:strength, t3:t3,
-                 roni:latest.anom, wk:wkLatest.nino34, iod:iod };
+                 roni:latest.anom, wk:wkLatest.nino34, iod:iod, mjo:mjo };
   // Always-visible plain verdict for the hero (the 2-second takeaway).
   var verdict = plainVerdict(phase, phaseOf(wkLatest.nino34));
 
@@ -937,6 +1129,7 @@ function render(roni, weekly, cachedAt, iod){
   +'</div>'
 
   + iodCard(iod)
+  + mjoCard(mjo)
 
   +'<div class="card">'
     +'<div class="cardtitle"><span class="dot"></span>'+tr('trendTitle')+'</div>'
@@ -955,6 +1148,9 @@ function render(roni, weekly, cachedAt, iod){
     +'<p><b>ENSO:</b> '+tr(farmKey)+'</p>'
     +(iodFarmLine(iod)
         ? '<p style="margin-top:9px"><b>IOD:</b> '+iodFarmLine(iod)+'</p>'
+        : '')
+    +(mjoFarmLine(mjo)
+        ? '<p style="margin-top:9px"><b>MJO:</b> '+mjoFarmLine(mjo)+'</p>'
         : '')
     +'<p style="font-size:11px;color:#92400e;margin-top:10px">'+tr('disclaimer')+'</p>'
   +'</div>'
@@ -1001,6 +1197,16 @@ function helpContent(){
     var iodPhraseKey = ip==='pos' ? 'iodNowPos' : ip==='neg' ? 'iodNowNeg' : 'iodNowNeu';
     iodNow = fmt(s.iod.value) + (s.iod.asOf ? ' ('+s.iod.asOf+') — ' : ' — ') + tr(iodPhraseKey);
   }
+  // Live MJO "right now" line.
+  var mjoNow = '';
+  if (s && s.mjo) {
+    if (s.mjo.amp < 1) {
+      mjoNow = tr('mjoPhaseLbl')+' '+s.mjo.phase+' · '+tr('mjoAmpLbl')+' '+s.mjo.amp.toFixed(2)+' — '+tr('mjoWeakBadge');
+    } else {
+      var me = mjoEffect(s.mjo.phase);
+      mjoNow = tr('mjoPhaseLbl')+' '+s.mjo.phase+' ('+tr(mjoRegionKey(s.mjo.phase))+') · '+tr('mjoAmpLbl')+' '+s.mjo.amp.toFixed(2)+' — '+tr(me==='wet'?'mjoWet':me==='dry'?'mjoDry':'mjoTrans');
+    }
+  }
   return ''
     +'<p>'+tr('helpIntro')+'</p>'
     +'<p class="hl-warm">🔴 '+tr('helpElnino')+'</p>'
@@ -1032,12 +1238,25 @@ function helpContent(){
     +'</div>'
     +'<p class="helpnote">'+tr('helpIodNote')+'</p>'
     +'<p class="iodcredit">'+tr('iodCredit')+'</p>'
+    // ---------- MJO section ----------
+    +'<div class="helpdiv"></div>'
+    +'<p>'+tr('helpMjo')+'</p>'
+    +'<div class="maptitle">🌀 '+tr('mjoTitle')+'</div>'
+    +'<div class="mapwrap">'+mjoWheel(s?s.mjo:null)+'</div>'
+    +(mjoNow?'<p class="nowline"><b>'+tr('mjoNowLabel')+'</b>'+mjoNow+'</p>':'')
+    +'<div class="outlook">'
+      +'<div class="outlook-h">🔭 '+tr('mjoOutlookLabel')+'</div>'
+      +'<p>'+tr('mjoOutlookTxt')+'</p>'
+      +'<a href="https://www.bom.gov.au/climate/mjo/" target="_blank" rel="noopener">'+tr('mjoOutlookCheck')+'</a>'
+    +'</div>'
     // ---------- sources ----------
     +'<div class="helpsrc">'+tr('srcTitle')+'<br>'
       +'NOAA CPC · RONI / Niño 3.4 SST<br>'
       +'<a href="https://www.cpc.ncep.noaa.gov/products/analysis_monitoring/enso_advisory/ensodisc.shtml" target="_blank" rel="noopener">CPC ENSO Diagnostic Discussion ↗</a><br>'
       +'BOM · IOD weekly index<br>'
-      +'<a href="https://www.bom.gov.au/climate/iod/" target="_blank" rel="noopener">BOM Indian Ocean monitoring ↗</a>'
+      +'<a href="https://www.bom.gov.au/climate/iod/" target="_blank" rel="noopener">BOM Indian Ocean monitoring ↗</a><br>'
+      +'BOM · MJO (RMM) daily index<br>'
+      +'<a href="https://www.bom.gov.au/climate/mjo/" target="_blank" rel="noopener">BOM MJO monitoring ↗</a>'
     +'</div>'
     +'<div class="qrbox">'
       +'<div class="qrtitle">📱 '+tr('qrTitle')+'</div>'
