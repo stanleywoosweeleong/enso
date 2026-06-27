@@ -87,6 +87,10 @@
     padding:10px 14px;margin-bottom:12px;text-align:center;font-size:13px;
     font-weight:600;color:#92400e}
   .offlinebar span{display:block;font-size:11px;font-weight:400;margin-top:3px;opacity:.85}
+  .iodage{background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:8px 11px;
+    margin:10px 0 0;font-size:11.5px;line-height:1.5;color:#92400e}
+  .iodfail{background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:11px 13px;
+    margin:8px 0 0;font-size:12px;line-height:1.55;color:#b91c1c}
   /* ---- Info-guide overlay (full-screen, toggled) ---- */
   .help-overlay{position:fixed;inset:0;background:rgba(15,23,42,.55);
     z-index:200;display:none;align-items:flex-end;justify-content:center}
@@ -249,7 +253,10 @@ var T = {
   iodTitle:   {zh:'印度洋偶极 (IOD)', en:'Indian Ocean Dipole (IOD)'},
   iodHint:    {zh:'IOD = 印度洋东西两侧的海温差。对马来西亚的雨量影响很直接，尤其是东侧（靠近苏门答腊）。每月更新。',
                en:'IOD = the east–west sea-temperature gradient across the Indian Ocean. It directly affects Malaysian rainfall, especially the eastern side (near Sumatra). Updated monthly.'},
-  iodLatest:  {zh:'最新月份 (DMI)', en:'Latest month (DMI)'},
+  iodLatest:  {zh:'最新值 (IOD)', en:'Latest (IOD)'},
+  iodSrc:     {zh:'数据来源', en:'Source'},
+  iodFail:    {zh:'⚠️ 暂时无法取得最新 IOD 数值。可能是数据源（BOM）页面有变动，需要更新程序。为避免误导，这里不显示过期或猜测的数值。',
+               en:'⚠️ Latest IOD value is temporarily unavailable. The data source (BOM) page may have changed and the code needs updating. To avoid misleading you, no stale or guessed value is shown here.'},
   iodPrev:    {zh:'上一月', en:'Previous month'},
   iodTrend:   {zh:'近三月走向', en:'3-month trend'},
   iodPos:     {zh:'正 IOD', en:'Positive IOD'},
@@ -264,7 +271,10 @@ var T = {
                en:'🌧️ Negative IOD — wetter for our region, often morning rain; mind drainage, root disease, and fieldwork timing.'},
   iodFarmNeu: {zh:'⚖️ IOD 中性 — 对雨量没有特别偏移。',
                en:'⚖️ IOD-neutral — no strong rainfall tilt.'},
-  iodUnit:    {zh:'°C · DMI 指数', en:'°C · DMI index'},
+  iodUnit:    {zh:'°C · IOD 指数（BOM 每周）', en:'°C · IOD index (BOM weekly)'},
+  iodSlow:    {zh:'', en:''},
+  iodAged:    {zh:'⚠️ IOD 数值日期为 {m}，可能已过期，需检查更新。暂不显示农事建议。',
+               en:'⚠️ IOD value is dated {m} and may be out of date — needs a check. Farm advice withheld until refreshed.'},
   helpIod:    {zh:'🌏 印度洋偶极 (IOD)：看印度洋东西两侧的海温差 (DMI)。负 IOD = 东侧（靠苏门答腊、离我们近）偏暖 → 本区偏湿、早上多雨；正 IOD = 东侧偏冷 → 本区偏干。门槛：≥ +0.4 为正，≤ −0.4 为负，中间为中性。IOD 与厄尔尼诺／拉尼娜会一起作用：负 IOD + 拉尼娜最湿，正 IOD + 厄尔尼诺最干。每月更新一次。',
                en:'🌏 Indian Ocean Dipole (IOD): the east–west sea-temperature gradient (DMI) across the Indian Ocean. Negative IOD = the eastern side (near Sumatra, close to us) is warmer → wetter here, often morning rain; positive IOD = cooler eastern side → drier here. Thresholds: ≥ +0.4 positive, ≤ −0.4 negative, in between neutral. IOD works together with El Niño/La Niña: negative IOD + La Niña is wettest, positive IOD + El Niño is driest. Updated monthly.'},
   farmTitle:  {zh:'对果园的意义', en:'What it means for the orchard'},
@@ -583,40 +593,72 @@ function seasonPlain(code){
   return MON_EN[+m[0]]+'-'+MON_EN[+m[1]]+'-'+MON_EN[+m[2]];
 }
 
-// Builds the Indian Ocean Dipole (IOD) card from parsed DMI data. Returns ''
-// if no IOD data (so the rest of the app is unaffected when the feed is down).
+// Builds the IOD card from the Worker's BOM scrape result {ok,value,asOf}.
+// FAILS LOUD: if the scrape is unavailable, or the value is too old, the card
+// shows a clear "needs updating" notice instead of any stale/guessed number
+// and instead of any rainfall advice. Returns '' only when there's no IOD
+// object at all (e.g. very first load offline with no cache).
 function iodCard(iod){
-  if (!iod || !iod.length) return '';
-  var last = iod[iod.length-1];
-  var prev = iod[iod.length-2] || last;
-  var p = iodPhaseOf(last.val);
+  if (!iod) return '';
+  // --- Failure guard: scrape broke (regex missed, BOM down, etc.) ---
+  if (!iod.ok || typeof iod.value !== 'number') {
+    return '<div class="card">'
+      +'<div class="cardtitle"><span class="dot"></span>'+tr('iodTitle')+'</div>'
+      +'<div class="iodfail">'+tr('iodFail')+'</div>'
+    +'</div>';
+  }
+  var v = iod.value;
+  var p = iodPhaseOf(v);
   var pClass = p==='pos' ? 'warm' : p==='neg' ? 'cool' : 'neutral';
   var phaseLbl = p==='pos' ? tr('iodPosCond') : p==='neg' ? tr('iodNegCond') : tr('iodNeuCond');
   var badgeCls = p==='pos' ? 'phase-warm' : p==='neg' ? 'phase-cool' : 'phase-neutral';
-  // 3-month trend from last 3 valid months.
-  var t3 = iod.slice(-3);
-  var trend = (t3.length>=2 && t3[t3.length-1].val > t3[0].val) ? 'up'
-            : (t3.length>=2 && t3[t3.length-1].val < t3[0].val) ? 'down' : 'flat';
-  var trendTxt = trend==='up' ? tr('rising') : trend==='down' ? tr('falling')
-            : (LANG==='zh' ? '持平 →' : 'Flat →');
   var farm = p==='pos' ? tr('iodFarmPos') : p==='neg' ? tr('iodFarmNeg') : tr('iodFarmNeu');
   var farmCls = p==='pos' ? 'verdict-warm' : p==='neg' ? 'verdict-cool' : 'verdict-neutral';
   var col = p==='pos' ? 'var(--warm)' : p==='neg' ? 'var(--cool)' : 'var(--ink)';
-  var when = monthName(last.month)+' '+last.year;
-  var whenPrev = monthName(prev.month)+' '+prev.year;
-  return '<div class="card">'
+
+  // --- Staleness guard on the BOM "as of" date ---
+  // If we can read the date and it's > ~5 weeks old, the scrape may be stuck on
+  // an old page; show the value but flag that it needs a check (no farm advice).
+  var asOfTs = iod.asOf ? bomDateTs(iod.asOf) : 0;
+  var tooOld = asOfTs > 0 && (Date.now() - asOfTs) > 35*24*3600*1000;
+  var asOfTxt = iod.asOf ? iod.asOf : '';
+
+  var html = '<div class="card">'
     +'<div class="cardtitle"><span class="dot"></span>'+tr('iodTitle')+'</div>'
     +'<div class="cardhint">'+tr('iodHint')+'</div>'
     +'<div style="text-align:center;margin:6px 0 2px">'
       +'<span class="phase-badge '+badgeCls+'">'+phaseLbl+'</span>'
     +'</div>'
-    +'<div class="bignum" style="font-size:38px;text-align:center;color:'+col+'">'+fmt(last.val)+'</div>'
-    +'<div class="anomunit" style="text-align:center">'+tr('iodUnit')+'</div>'
-    +'<div class="verdict '+farmCls+'" style="margin-top:14px;border-radius:10px;border:none">'+farm+'</div>'
-    +'<div class="row" style="margin-top:8px"><span class="k">'+tr('iodLatest')+'</span><span class="v '+pClass+'">'+when+' · '+fmt(last.val)+'</span></div>'
-    +'<div class="row"><span class="k">'+tr('iodPrev')+'</span><span class="v">'+whenPrev+' · '+fmt(prev.val)+'</span></div>'
-    +'<div class="row"><span class="k">'+tr('iodTrend')+'</span><span class="v">'+trendTxt+'</span></div>'
+    +'<div class="bignum" style="font-size:38px;text-align:center;color:'+col+'">'+fmt(v)+'</div>'
+    +'<div class="anomunit" style="text-align:center">'+tr('iodUnit')+'</div>';
+
+  if (tooOld) {
+    // Value present but the source date is stale — flag, withhold advice.
+    html += '<div class="iodage">'+tr('iodAged').replace('{m}', asOfTxt)+'</div>';
+  } else {
+    html += '<div class="verdict '+farmCls+'" style="margin-top:14px;border-radius:10px;border:none">'+farm+'</div>';
+  }
+  html += '<div class="row" style="margin-top:8px"><span class="k">'+tr('iodLatest')+'</span><span class="v '+pClass+'">'+(asOfTxt?asOfTxt+' · ':'')+fmt(v)+'</span></div>'
+    +'<div class="row"><span class="k">'+tr('iodSrc')+'</span><span class="v" style="font-weight:400;color:var(--muted)">BOM</span></div>'
   +'</div>';
+  return html;
+}
+// Parse a BOM date like "14 June 2026" or "3 May" (no year) into a timestamp.
+// If the year is missing, assume the most recent past occurrence.
+function bomDateTs(s){
+  var MO={january:0,february:1,march:2,april:3,may:4,june:5,july:6,august:7,
+          september:8,october:9,november:10,december:11};
+  var m = s.match(/(\d{1,2})\s+([A-Za-z]+)(?:\s+(\d{4}))?/);
+  if (!m) return 0;
+  var day = parseInt(m[1],10);
+  var mon = MO[m[2].toLowerCase()];
+  if (mon === undefined) return 0;
+  var now = new Date();
+  var year = m[3] ? parseInt(m[3],10) : now.getFullYear();
+  var ts = new Date(year, mon, day).getTime();
+  // If no year was given and the date is in the future, it's last year's.
+  if (!m[3] && ts > now.getTime()) ts = new Date(year-1, mon, day).getTime();
+  return ts;
 }
 
 // Inline SVG map of the four Nino regions, west->east, with Malaysia marked.
@@ -695,7 +737,8 @@ function load(){
       var roni = parseSeasonal(res[0], 2);   // RONI anom in col 2
       var weekly = parseWeekly(res[1]);
       if (!roni.length || !weekly.length) throw new Error('empty parse');
-      var iod = res[2] ? parseDMI(res[2]) : [];
+      // IOD comes back as JSON {ok,value,asOf} from the Worker's BOM scrape.
+      var iod = parseIod(res[2]);
       // Save the fresh feeds so the app can show them next time it's offline.
       try {
         localStorage.setItem('enso-cache', JSON.stringify({
@@ -711,11 +754,23 @@ function load(){
       if (raw && raw.roni && raw.weekly) {
         var roni = parseSeasonal(raw.roni, 2);
         var weekly = parseWeekly(raw.weekly);
-        var iod = raw.iod ? parseDMI(raw.iod) : [];
+        var iod = parseIod(raw.iod);
         if (roni.length && weekly.length) { render(roni, weekly, raw.at, iod); return; }
       }
       renderError(e); // no cache to fall back on
     });
+}
+// Parse the Worker's IOD JSON. Returns {ok,value,asOf} on success, or
+// {ok:false} on any problem — the card uses ok:false to show a loud notice.
+function parseIod(text){
+  if (!text) return { ok:false };
+  try {
+    var o = (typeof text === 'string') ? JSON.parse(text) : text;
+    if (o && o.ok === true && typeof o.value === 'number') {
+      return { ok:true, value:o.value, asOf:o.asOf || null };
+    }
+    return { ok:false, reason:(o && o.reason) || 'no data' };
+  } catch(e){ return { ok:false, reason:'bad json' }; }
 }
 
 /* ===================== RENDER ===================== */
