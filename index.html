@@ -119,6 +119,8 @@
   .help .helpdiv{height:1px;background:var(--line);margin:14px 0 4px}
   .help .helpnote{background:#f8fafc;border:1px solid var(--line);border-left:3px solid #94a3b8;
     border-radius:8px;padding:10px 12px;font-size:12.5px;line-height:1.6;color:#475569;margin:8px 0}
+  .help .iodcredit{background:#f0fdf4;border:1px solid #bbf7d0;border-left:3px solid #16a34a;
+    border-radius:8px;padding:10px 12px;font-size:12.5px;line-height:1.6;color:#166534;margin:8px 0}
   .help .maptitle{font-size:13px;font-weight:700;color:#0c4a6e;margin:14px 0 6px}
   .help .mapwrap{background:#f8fafc;border:1px solid var(--line);border-radius:10px;
     padding:8px}
@@ -271,21 +273,23 @@ var T = {
   iodPosCond: {zh:'正 IOD 状态', en:'Positive IOD'},
   iodNegCond: {zh:'负 IOD 状态', en:'Negative IOD'},
   iodNeuCond: {zh:'IOD 中性', en:'IOD-neutral'},
-  iodFarmPos: {zh:'☀️ 正 IOD — 本区通常偏干，留意灌溉与火患。',
-               en:'☀️ Positive IOD — drier for our region; watch irrigation and fire risk.'},
-  iodFarmNeg: {zh:'🌧️ 负 IOD — 本区通常偏湿、早上易下雨，注意排水、根病与农活安排。',
-               en:'🌧️ Negative IOD — wetter for our region, often morning rain; mind drainage, root disease, and fieldwork timing.'},
-  iodFarmNeu: {zh:'⚖️ IOD 中性 — 对雨量没有特别偏移。',
-               en:'⚖️ IOD-neutral — no strong rainfall tilt.'},
+  iodFarmPos: {zh:'正 IOD 通常让本区 偏少雨量、趋干。它常与厄尔尼诺同时出现、方向一致；两者同时偏干时旱情更重。但 IOD 也可能单独出现，所以即使 ENSO 中性也要留意：注意灌溉与火患。',
+               en:'Positive IOD usually brings drier-than-normal rainfall to our region. It often coincides with El Niño and points the same dry way; when both align, dry spells are sharper. But IOD can also act on its own, so watch it even when ENSO is neutral: mind irrigation and fire risk.'},
+  iodFarmNeg: {zh:'负 IOD 通常让本区 偏多雨量、早上多雨。它常与拉尼娜同时出现、方向一致；两者同时偏湿时雨水更多。但 IOD 也可能单独出现，所以即使 ENSO 中性也要留意：注意排水、根部病害，并安排好喷药与采收时段。',
+               en:'Negative IOD usually brings wetter-than-normal rainfall and more morning rain to our region. It often coincides with La Niña and points the same wet way; when both align, rain is heavier. But IOD can also act on its own, so watch it even when ENSO is neutral: mind drainage, root disease, and time your spraying and harvesting carefully.'},
+  iodFarmNeu: {zh:'IOD 中性 — 印度洋方向对雨量没有明显偏移，按常规管理即可，主要看上方 ENSO 与短期天气预报。',
+               en:'IOD-neutral — the Indian Ocean adds no strong rainfall tilt; manage as usual and rely mainly on ENSO above and short-range forecasts.'},
   iodUnit:    {zh:'°C · IOD 指数（BOM 每周）', en:'°C · IOD index (BOM weekly)'},
   iodSlow:    {zh:'', en:''},
   iodAged:    {zh:'⚠️ IOD 数值日期为 {m}，可能已过期，需检查更新。暂不显示农事建议。',
                en:'⚠️ IOD value is dated {m} and may be out of date — needs a check. Farm advice withheld until refreshed.'},
-  helpIod:    {zh:'🌏 印度洋偶极 (IOD)：看印度洋东西两侧的海温差。负 IOD = 东侧（靠苏门答腊、离我们近）偏暖 → 本区偏湿、早上多雨；正 IOD = 东侧偏冷 → 本区偏干。门槛：≥ +0.4 为正，≤ −0.4 为负，中间为中性。IOD 与厄尔尼诺／拉尼娜会一起作用：负 IOD + 拉尼娜最湿，正 IOD + 厄尔尼诺最干。数据来自澳洲气象局 (BOM) 的每周 IOD 指数。',
-               en:'🌏 Indian Ocean Dipole (IOD): the east–west sea-temperature gradient across the Indian Ocean. Negative IOD = the eastern side (near Sumatra, close to us) is warmer → wetter here, often morning rain; positive IOD = cooler eastern side → drier here. Thresholds: ≥ +0.4 positive, ≤ −0.4 negative, in between neutral. IOD works together with El Niño/La Niña: negative IOD + La Niña is wettest, positive IOD + El Niño is driest. The value comes from the Bureau of Meteorology (BOM) weekly IOD index.'},
+  helpIod:    {zh:'🌏 印度洋偶极 (IOD)：看印度洋东西两侧的海温差。负 IOD = 东侧（靠苏门答腊、离我们近）偏暖 → 本区偏湿、早上多雨；正 IOD = 东侧偏冷 → 本区偏干。门槛：≥ +0.4 为正，≤ −0.4 为负，中间为中性。IOD 常与厄尔尼诺／拉尼娜同向出现：负 IOD + 拉尼娜最湿，正 IOD + 厄尔尼诺最干。但两者并非绑定——IOD 也可能在 ENSO 中性时单独出现，所以值得单独追踪。数据来自澳洲气象局 (BOM) 的每周 IOD 指数。',
+               en:'🌏 Indian Ocean Dipole (IOD): the east–west sea-temperature gradient across the Indian Ocean. Negative IOD = the eastern side (near Sumatra, close to us) is warmer → wetter here, often morning rain; positive IOD = cooler eastern side → drier here. Thresholds: ≥ +0.4 positive, ≤ −0.4 negative, in between neutral. IOD often lines up with El Niño/La Niña: negative IOD + La Niña is wettest, positive IOD + El Niño is driest. But they are not locked together — IOD can also occur on its own while ENSO is neutral, which is why it is worth tracking separately. The value comes from the Bureau of Meteorology (BOM) weekly IOD index.'},
   helpIodNote:{zh:'ℹ️ 关于「IOD 暂时无法取得」：与 NOAA 的厄尔尼诺数据不同，IOD 没有干净的机器可读数据源，我们是从 BOM 网页上抓取那句「IOD index is …」。如果哪天看到红色提示「暂时无法取得」，多数情况只是 BOM 改了网页措辞，抓取对不上了——这是程序「宁可不显示，也不给过期或乱猜的数字」的安全设计，不是系统坏了，也不是数据出错。厄尔尼诺部分完全不受影响，照常运作。看到这个提示时不用紧张，只需把那句话的新写法告诉开发者，改一行抓取规则即可。预计每隔几个月可能需要微调一次。',
                en:'ℹ️ About the "IOD temporarily unavailable" notice: unlike the NOAA El Niño data, IOD has no clean machine-readable feed, so we scrape the sentence "IOD index is …" from BOM\'s web page. If you ever see the red "temporarily unavailable" notice, it almost always just means BOM reworded their page so the scrape no longer matches. This is the app\'s safety design deliberately choosing to show nothing rather than a stale or guessed number — it is not a breakage and not bad data. The El Niño side is completely unaffected and keeps working. No need to worry when you see it: just send the developer BOM\'s new wording and it\'s a one-line fix. Expect this maybe once every few months.'},
   farmTitle:  {zh:'对果园的意义', en:'What it means for the orchard'},
+  iodCredit:  {zh:'🙏 本 IOD 功能源自农友 Wei Jian 的提问——他注意到负 IOD 时本地早上常下雨、影响农活。谢谢他的宝贵反馈，让这个工具对大家更有用。',
+               en:'🙏 This IOD feature came from a question by fellow grower Wei Jian, who noticed that negative IOD often brings morning rain here and affects fieldwork. Thank you for the valuable feedback that made this tool better for everyone.'},
   srcTitle:   {zh:'数据来源', en:'Data sources'},
   qrTitle:    {zh:'扫码打开这个 App', en:'Scan to open this app'},
   qrHint:     {zh:'用手机相机扫描，分享给其他农友', en:'Scan with your phone camera — share with other farmers'},
@@ -359,6 +363,23 @@ var T = {
   helpOutlookTxt:   {zh:'NOAA 已发布「厄尔尼诺预警」，预计厄尔尼诺将从今年下半年增强至 2026/27 年冬季。（此为 NOAA 每月人工发布的预报，非本 App 实时数据计算，约每月更新一次。）',
                      en:'NOAA has issued an El Niño Advisory — El Niño is expected to strengthen from the second half of this year into the 2026/27 winter. (This is NOAA\u2019s monthly human-issued forecast, not computed from this app\u2019s live data; updated about monthly.)'},
   helpOutlookCheck: {zh:'查看 NOAA 最新展望 ↗', en:'Check NOAA\u2019s latest outlook ↗'},
+  iodMapTitle:{zh:'印度洋的两端（西 vs 东）', en:'The two ends of the Indian Ocean (west vs east)'},
+  iodMapWest: {zh:'西极', en:'West pole'},
+  iodMapWestSub:{zh:'非洲东岸外海', en:'off East Africa'},
+  iodMapEast: {zh:'东极', en:'East pole'},
+  iodMapEastSub:{zh:'苏门答腊外海 — 离我们最近', en:'off Sumatra — nearest us'},
+  iodMapMY:   {zh:'马来西亚 / 你的果园', en:'Malaysia / your orchard'},
+  iodMapMYsub:{zh:'就在东极旁 — 负 IOD 时这里通常偏湿', en:'right by the east pole — negative IOD tends to be wetter here'},
+  iodMapFoot: {zh:'IOD 值 = 西极减东极的海温差',
+               en:'IOD value = west-pole minus east-pole sea-temperature difference'},
+  iodNowLabel:{zh:'现在的情况（BOM 实时）：', en:'Right now (live from BOM): '},
+  iodNowPos:  {zh:'正 IOD — 本区趋干。', en:'Positive IOD — drier tilt for our region.'},
+  iodNowNeg:  {zh:'负 IOD — 本区趋湿、早上多雨。', en:'Negative IOD — wetter tilt, more morning rain.'},
+  iodNowNeu:  {zh:'IOD 中性 — 没有明显偏移。', en:'IOD-neutral — no strong tilt.'},
+  iodOutlookLabel:{zh:'BOM 官方 IOD 页面', en:'BOM official IOD page'},
+  iodOutlookTxt:  {zh:'澳洲气象局 (BOM) 每周更新 IOD 指数，并发布模式展望（未来几个月正/负 IOD 的可能性）。本 App 的 IOD 数值即取自该页。',
+                   en:'The Bureau of Meteorology (BOM) updates the IOD index weekly and publishes a model outlook (the chance of a positive/negative IOD in coming months). This app\u2019s IOD value is read from that page.'},
+  iodOutlookCheck:{zh:'查看 BOM 最新 IOD ↗', en:'Check BOM\u2019s latest IOD ↗'},
   errTitle:   {zh:'无法载入数据', en:'Could not load data'},
   errBody:    {zh:'请检查网络或 Worker 设置。NOAA 数据需经 Cloudflare Worker 代理。',
                en:'Check your network or Worker setup. NOAA feeds must be proxied via the Cloudflare Worker.'},
@@ -714,6 +735,40 @@ function ninoMap(){  var t = function(k){ return tr(k); };
   +'</svg>';
 }
 
+// Inline SVG map of the Indian Ocean's two IOD poles, west (off Africa) and
+// east (off Sumatra), with Malaysia marked next to the east pole. Mirrors the
+// style of ninoMap so the two map cards feel consistent. Pure SVG (offline).
+function iodMap(){  var t = function(k){ return tr(k); };
+  return ''
+  +'<svg viewBox="0 0 360 250" class="ninomap" role="img" aria-label="Indian Ocean Dipole map">'
+    // ocean strip
+    +'<rect x="6" y="70" width="348" height="92" rx="7" fill="#e0f2fe" stroke="#7dd3fc" stroke-width="1"/>'
+    // equator
+    +'<line x1="6" y1="116" x2="354" y2="116" stroke="#0284c7" stroke-width="1" stroke-dasharray="3 3" opacity="0.6"/>'
+    +'<text x="30" y="132" font-size="8" fill="#0369a1">'+ (LANG==='zh'?'赤道':'Equator') +'</text>'
+    // Africa (west landmass)
+    +'<rect x="6" y="80" width="22" height="72" rx="3" fill="#e2e8f0" stroke="#cbd5e1" stroke-width="1"/>'
+    +'<text x="17" y="64" font-size="9" fill="#64748b" text-anchor="middle">'+t('iodMapWest')+'</text>'
+    // Sumatra / Maritime continent (east landmass)
+    +'<rect x="300" y="80" width="22" height="72" rx="3" fill="#e2e8f0" stroke="#cbd5e1" stroke-width="1"/>'
+    +'<text x="333" y="64" font-size="9" fill="#64748b" text-anchor="middle">'+t('iodMapEast')+'</text>'
+    // West pole box (cool/warm depends on phase; show neutral teal-blue)
+    +'<rect x="40" y="92" width="96" height="40" rx="4" fill="#dbeafe" stroke="#93c5fd" stroke-width="1.5"/>'
+    +'<text x="88" y="108" font-size="10" font-weight="bold" fill="#1e40af" text-anchor="middle">'+t('iodMapWest')+'</text>'
+    +'<text x="88" y="121" font-size="7.5" fill="#1e40af" text-anchor="middle">'+t('iodMapWestSub')+'</text>'
+    // East pole box (the one near us, emphasized amber)
+    +'<rect x="200" y="90" width="96" height="44" rx="4" fill="#fef3c7" stroke="#f59e0b" stroke-width="2"/>'
+    +'<text x="248" y="106" font-size="10" font-weight="bold" fill="#92400e" text-anchor="middle">'+t('iodMapEast')+' ★</text>'
+    +'<text x="248" y="119" font-size="7.5" fill="#92400e" text-anchor="middle">'+t('iodMapEastSub')+'</text>'
+    // Malaysia marker (by the east pole)
+    +'<circle cx="306" cy="182" r="5" fill="#0f766e"/>'
+    +'<text x="298" y="179" font-size="9" font-weight="bold" fill="#0f766e" text-anchor="end">'+t('iodMapMY')+'</text>'
+    +'<text x="298" y="192" font-size="7.5" fill="#475569" text-anchor="end">'+t('iodMapMYsub')+'</text>'
+    // footnote
+    +'<text x="180" y="238" font-size="8" fill="#854d0e" text-anchor="middle">★ '+t('iodMapFoot')+'</text>'
+  +'</svg>';
+}
+
 // Offline QR code for the app URL (https://stanleywoosweeleong.github.io/enso/).
 // Matrix baked in as a static SVG path so it works with no network. The URL is
 // fixed, so this never needs regenerating unless the deployment URL changes.
@@ -824,7 +879,7 @@ function render(roni, weekly, cachedAt, iod){
   // Stash the inputs so the info-guide overlay can regenerate this live text
   // (and in the current language) whenever it is opened.
   HELP_STATE = { phase:phase, strength:strength, t3:t3,
-                 roni:latest.anom, wk:wkLatest.nino34 };
+                 roni:latest.anom, wk:wkLatest.nino34, iod:iod };
   // Always-visible plain verdict for the hero (the 2-second takeaway).
   var verdict = plainVerdict(phase, phaseOf(wkLatest.nino34));
 
@@ -937,6 +992,13 @@ function helpContent(){
   var s = HELP_STATE;
   var nowTxt = s ? situationText(s.phase, s.strength, s.t3, s.roni, s.wk)
                  : '';
+  // Live IOD "right now" line, only when we have a good current value.
+  var iodNow = '';
+  if (s && s.iod && s.iod.ok && typeof s.iod.value === 'number') {
+    var ip = iodPhaseOf(s.iod.value);
+    var iodPhraseKey = ip==='pos' ? 'iodNowPos' : ip==='neg' ? 'iodNowNeg' : 'iodNowNeu';
+    iodNow = fmt(s.iod.value) + (s.iod.asOf ? ' ('+s.iod.asOf+') — ' : ' — ') + tr(iodPhraseKey);
+  }
   return ''
     +'<p>'+tr('helpIntro')+'</p>'
     +'<p class="hl-warm">🔴 '+tr('helpElnino')+'</p>'
@@ -949,18 +1011,31 @@ function helpContent(){
     +'<p>🌊 '+tr('helpWhat34')+'</p>'
     +'<div class="maptitle">🗺️ '+tr('mapTitle')+'</div>'
     +'<div class="mapwrap">'+ninoMap()+'</div>'
-    +'<div class="helpdiv"></div>'
-    +'<p>'+tr('helpIod')+'</p>'
-    +'<p class="helpnote">'+tr('helpIodNote')+'</p>'
     +(nowTxt?'<p class="nowline"><b>'+tr('helpNow')+'</b>'+nowTxt+'</p>':'')
     +'<div class="outlook">'
       +'<div class="outlook-h">🔭 '+tr('helpOutlookLabel')+'</div>'
       +'<p>'+tr('helpOutlookTxt')+'</p>'
       +'<a href="https://www.cpc.ncep.noaa.gov/products/analysis_monitoring/enso_advisory/ensodisc.shtml" target="_blank" rel="noopener">'+tr('helpOutlookCheck')+'</a>'
     +'</div>'
+    // ---------- IOD section (parallel structure to ENSO above) ----------
+    +'<div class="helpdiv"></div>'
+    +'<p>'+tr('helpIod')+'</p>'
+    +'<div class="maptitle">🗺️ '+tr('iodMapTitle')+'</div>'
+    +'<div class="mapwrap">'+iodMap()+'</div>'
+    +(iodNow?'<p class="nowline"><b>'+tr('iodNowLabel')+'</b>'+iodNow+'</p>':'')
+    +'<div class="outlook">'
+      +'<div class="outlook-h">🔭 '+tr('iodOutlookLabel')+'</div>'
+      +'<p>'+tr('iodOutlookTxt')+'</p>'
+      +'<a href="https://www.bom.gov.au/climate/iod/" target="_blank" rel="noopener">'+tr('iodOutlookCheck')+'</a>'
+    +'</div>'
+    +'<p class="helpnote">'+tr('helpIodNote')+'</p>'
+    +'<p class="iodcredit">'+tr('iodCredit')+'</p>'
+    // ---------- sources ----------
     +'<div class="helpsrc">'+tr('srcTitle')+'<br>'
       +'NOAA CPC · RONI / Niño 3.4 SST<br>'
-      +'<a href="https://www.cpc.ncep.noaa.gov/products/analysis_monitoring/enso_advisory/ensodisc.shtml" target="_blank" rel="noopener">CPC ENSO Diagnostic Discussion ↗</a>'
+      +'<a href="https://www.cpc.ncep.noaa.gov/products/analysis_monitoring/enso_advisory/ensodisc.shtml" target="_blank" rel="noopener">CPC ENSO Diagnostic Discussion ↗</a><br>'
+      +'BOM · IOD weekly index<br>'
+      +'<a href="https://www.bom.gov.au/climate/iod/" target="_blank" rel="noopener">BOM Indian Ocean monitoring ↗</a>'
     +'</div>'
     +'<div class="qrbox">'
       +'<div class="qrtitle">📱 '+tr('qrTitle')+'</div>'
