@@ -246,6 +246,27 @@ var T = {
   roniTitle:  {zh:'RONI · 官方指数（季）', en:'RONI · official index (seasonal)'},
   weeklyTitle:{zh:'每周 Niño 3.4 海温距平', en:'Weekly Niño 3.4 SST anomaly'},
   trendTitle: {zh:'近 24 季趋势', en:'Last 24 seasons trend'},
+  iodTitle:   {zh:'印度洋偶极 (IOD)', en:'Indian Ocean Dipole (IOD)'},
+  iodHint:    {zh:'IOD = 印度洋东西两侧的海温差。对马来西亚的雨量影响很直接，尤其是东侧（靠近苏门答腊）。每月更新。',
+               en:'IOD = the east–west sea-temperature gradient across the Indian Ocean. It directly affects Malaysian rainfall, especially the eastern side (near Sumatra). Updated monthly.'},
+  iodLatest:  {zh:'最新月份 (DMI)', en:'Latest month (DMI)'},
+  iodPrev:    {zh:'上一月', en:'Previous month'},
+  iodTrend:   {zh:'近三月走向', en:'3-month trend'},
+  iodPos:     {zh:'正 IOD', en:'Positive IOD'},
+  iodNeg:     {zh:'负 IOD', en:'Negative IOD'},
+  iodNeu:     {zh:'IOD 中性', en:'IOD-neutral'},
+  iodPosCond: {zh:'正 IOD 状态', en:'Positive IOD'},
+  iodNegCond: {zh:'负 IOD 状态', en:'Negative IOD'},
+  iodNeuCond: {zh:'IOD 中性', en:'IOD-neutral'},
+  iodFarmPos: {zh:'☀️ 正 IOD — 本区通常偏干，留意灌溉与火患。',
+               en:'☀️ Positive IOD — drier for our region; watch irrigation and fire risk.'},
+  iodFarmNeg: {zh:'🌧️ 负 IOD — 本区通常偏湿、早上易下雨，注意排水、根病与农活安排。',
+               en:'🌧️ Negative IOD — wetter for our region, often morning rain; mind drainage, root disease, and fieldwork timing.'},
+  iodFarmNeu: {zh:'⚖️ IOD 中性 — 对雨量没有特别偏移。',
+               en:'⚖️ IOD-neutral — no strong rainfall tilt.'},
+  iodUnit:    {zh:'°C · DMI 指数', en:'°C · DMI index'},
+  helpIod:    {zh:'🌏 印度洋偶极 (IOD)：看印度洋东西两侧的海温差 (DMI)。负 IOD = 东侧（靠苏门答腊、离我们近）偏暖 → 本区偏湿、早上多雨；正 IOD = 东侧偏冷 → 本区偏干。门槛：≥ +0.4 为正，≤ −0.4 为负，中间为中性。IOD 与厄尔尼诺／拉尼娜会一起作用：负 IOD + 拉尼娜最湿，正 IOD + 厄尔尼诺最干。每月更新一次。',
+               en:'🌏 Indian Ocean Dipole (IOD): the east–west sea-temperature gradient (DMI) across the Indian Ocean. Negative IOD = the eastern side (near Sumatra, close to us) is warmer → wetter here, often morning rain; positive IOD = cooler eastern side → drier here. Thresholds: ≥ +0.4 positive, ≤ −0.4 negative, in between neutral. IOD works together with El Niño/La Niña: negative IOD + La Niña is wettest, positive IOD + El Niño is driest. Updated monthly.'},
   farmTitle:  {zh:'对果园的意义', en:'What it means for the orchard'},
   srcTitle:   {zh:'数据来源', en:'Data sources'},
   qrTitle:    {zh:'扫码打开这个 App', en:'Scan to open this app'},
@@ -352,6 +373,31 @@ function parseSeasonal(text, anomCol){
   }
   return out;
 }
+// dmi.had.long.data (NOAA PSL "standard" format): a header line "STARTYR ENDYR",
+// then one row per year: "YEAR  jan feb mar ... dec" (12 monthly DMI values).
+// Missing/future months are a flag like -999.0 (or -9999). Trailing lines after
+// the data are footer/metadata. Returns valid months chronologically sorted, so
+// the last element is the most recent real value.
+function parseDMI(text){
+  var lines = text.trim().split(/\r?\n/);
+  var out = [];
+  var MISSING = -90; // any value <= this is treated as the missing flag (-999, -9999)
+  for (var i=0;i<lines.length;i++){
+    var p = lines[i].trim().split(/\s+/);
+    // A data row starts with a 4-digit year and has up to 12 monthly columns.
+    if (!/^\d{4}$/.test(p[0])) continue;
+    var year = parseInt(p[0],10);
+    if (year < 1800 || year > 2100) continue; // skip header "1870 2026" line etc.
+    for (var m=1; m<=12 && m<p.length; m++){
+      var v = parseFloat(p[m]);
+      if (isNaN(v) || v <= MISSING) continue; // skip missing months
+      out.push({ year:year, month:m, val:v });
+    }
+  }
+  // chronological order
+  out.sort(function(a,b){ return (a.year-b.year) || (a.month-b.month); });
+  return out;
+}
 // wksst9120.for : header rows then data lines. Two possible NOAA layouts:
 //  (A) SST+anomaly pairs (8 numbers): "20JUN2026  22.1 0.4  25.3 0.7  27.6 1.4  28.9 0.9"
 //  (B) anomaly-only (4 numbers):      "20JUN2026  0.4  0.7  1.4  0.9"
@@ -418,6 +464,19 @@ function strengthOf(anom){
   if (a < 1.5) return 'moderate';
   if (a < 2.0) return 'strong';
   return 'verystrong';
+}
+// IOD phase from the DMI value. Standard thresholds: +/-0.4 deg C.
+var IOD_THRESH = 0.4;
+function iodPhaseOf(v){
+  if (v >= IOD_THRESH) return 'pos';
+  if (v <= -IOD_THRESH) return 'neg';
+  return 'neu';
+}
+// Short month name in the current language for a 1-12 month number.
+function monthName(m){
+  var en = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  if (LANG === 'zh') return m + '月';
+  return en[m-1] || ('M'+m);
 }
 function fmt(n){ return (n>=0?'+':'') + n.toFixed(2); }
 // Format a cache timestamp as a short local date+time for the offline banner.
@@ -524,10 +583,45 @@ function seasonPlain(code){
   return MON_EN[+m[0]]+'-'+MON_EN[+m[1]]+'-'+MON_EN[+m[2]];
 }
 
+// Builds the Indian Ocean Dipole (IOD) card from parsed DMI data. Returns ''
+// if no IOD data (so the rest of the app is unaffected when the feed is down).
+function iodCard(iod){
+  if (!iod || !iod.length) return '';
+  var last = iod[iod.length-1];
+  var prev = iod[iod.length-2] || last;
+  var p = iodPhaseOf(last.val);
+  var pClass = p==='pos' ? 'warm' : p==='neg' ? 'cool' : 'neutral';
+  var phaseLbl = p==='pos' ? tr('iodPosCond') : p==='neg' ? tr('iodNegCond') : tr('iodNeuCond');
+  var badgeCls = p==='pos' ? 'phase-warm' : p==='neg' ? 'phase-cool' : 'phase-neutral';
+  // 3-month trend from last 3 valid months.
+  var t3 = iod.slice(-3);
+  var trend = (t3.length>=2 && t3[t3.length-1].val > t3[0].val) ? 'up'
+            : (t3.length>=2 && t3[t3.length-1].val < t3[0].val) ? 'down' : 'flat';
+  var trendTxt = trend==='up' ? tr('rising') : trend==='down' ? tr('falling')
+            : (LANG==='zh' ? '持平 →' : 'Flat →');
+  var farm = p==='pos' ? tr('iodFarmPos') : p==='neg' ? tr('iodFarmNeg') : tr('iodFarmNeu');
+  var farmCls = p==='pos' ? 'verdict-warm' : p==='neg' ? 'verdict-cool' : 'verdict-neutral';
+  var col = p==='pos' ? 'var(--warm)' : p==='neg' ? 'var(--cool)' : 'var(--ink)';
+  var when = monthName(last.month)+' '+last.year;
+  var whenPrev = monthName(prev.month)+' '+prev.year;
+  return '<div class="card">'
+    +'<div class="cardtitle"><span class="dot"></span>'+tr('iodTitle')+'</div>'
+    +'<div class="cardhint">'+tr('iodHint')+'</div>'
+    +'<div style="text-align:center;margin:6px 0 2px">'
+      +'<span class="phase-badge '+badgeCls+'">'+phaseLbl+'</span>'
+    +'</div>'
+    +'<div class="bignum" style="font-size:38px;text-align:center;color:'+col+'">'+fmt(last.val)+'</div>'
+    +'<div class="anomunit" style="text-align:center">'+tr('iodUnit')+'</div>'
+    +'<div class="verdict '+farmCls+'" style="margin-top:14px;border-radius:10px;border:none">'+farm+'</div>'
+    +'<div class="row" style="margin-top:8px"><span class="k">'+tr('iodLatest')+'</span><span class="v '+pClass+'">'+when+' · '+fmt(last.val)+'</span></div>'
+    +'<div class="row"><span class="k">'+tr('iodPrev')+'</span><span class="v">'+whenPrev+' · '+fmt(prev.val)+'</span></div>'
+    +'<div class="row"><span class="k">'+tr('iodTrend')+'</span><span class="v">'+trendTxt+'</span></div>'
+  +'</div>';
+}
+
 // Inline SVG map of the four Nino regions, west->east, with Malaysia marked.
 // Pure SVG so it works offline. viewBox scales to the card width on phone.
-function ninoMap(){
-  var t = function(k){ return tr(k); };
+function ninoMap(){  var t = function(k){ return tr(k); };
   return ''
   +'<svg viewBox="0 0 360 250" class="ninomap" role="img" aria-label="Niño regions map">'
     // ocean strip
@@ -593,18 +687,22 @@ function load(){
   var app = document.getElementById('app');
   app.innerHTML = '<div class="loading" id="loading"><div class="spinner"></div><div>'
     + tr('loading') + '</div></div>';
-  Promise.all([ getFeed('roni'), getFeed('weekly') ])
+  // IOD is a bonus feed: if it fails we still show ENSO. So its fetch never
+  // rejects the whole Promise.all — it resolves to null on failure.
+  var iodFeed = getFeed('iod').catch(function(){ return null; });
+  Promise.all([ getFeed('roni'), getFeed('weekly'), iodFeed ])
     .then(function(res){
       var roni = parseSeasonal(res[0], 2);   // RONI anom in col 2
       var weekly = parseWeekly(res[1]);
       if (!roni.length || !weekly.length) throw new Error('empty parse');
+      var iod = res[2] ? parseDMI(res[2]) : [];
       // Save the fresh feeds so the app can show them next time it's offline.
       try {
         localStorage.setItem('enso-cache', JSON.stringify({
-          roni: res[0], weekly: res[1], at: Date.now()
+          roni: res[0], weekly: res[1], iod: res[2] || '', at: Date.now()
         }));
       } catch(e){ /* storage full or blocked — ignore */ }
-      render(roni, weekly, null);
+      render(roni, weekly, null, iod);
     })
     .catch(function(e){
       // Fetch failed (likely offline). Fall back to the last-saved data.
@@ -613,14 +711,15 @@ function load(){
       if (raw && raw.roni && raw.weekly) {
         var roni = parseSeasonal(raw.roni, 2);
         var weekly = parseWeekly(raw.weekly);
-        if (roni.length && weekly.length) { render(roni, weekly, raw.at); return; }
+        var iod = raw.iod ? parseDMI(raw.iod) : [];
+        if (roni.length && weekly.length) { render(roni, weekly, raw.at, iod); return; }
       }
       renderError(e); // no cache to fall back on
     });
 }
 
 /* ===================== RENDER ===================== */
-function render(roni, weekly, cachedAt){
+function render(roni, weekly, cachedAt, iod){
   var latest = roni[roni.length-1];
   var prev   = roni[roni.length-2] || latest;
   var phase  = phaseOf(latest.anom);
@@ -715,6 +814,8 @@ function render(roni, weekly, cachedAt){
     +'<div class="row"><span class="k">'+tr('nino4')+'</span><span class="v">'+fmt(wkLatest.nino4)+'°C</span></div>'
   +'</div>'
 
+  + iodCard(iod)
+
   +'<div class="card">'
     +'<div class="cardtitle"><span class="dot"></span>'+tr('trendTitle')+'</div>'
     +'<div class="cardhint">'+tr('helpTrend')+'</div>'
@@ -780,6 +881,8 @@ function helpContent(){
     +'<p>🌊 '+tr('helpWhat34')+'</p>'
     +'<div class="maptitle">🗺️ '+tr('mapTitle')+'</div>'
     +'<div class="mapwrap">'+ninoMap()+'</div>'
+    +'<div class="helpdiv"></div>'
+    +'<p>'+tr('helpIod')+'</p>'
     +(nowTxt?'<p class="nowline"><b>'+tr('helpNow')+'</b>'+nowTxt+'</p>':'')
     +'<div class="outlook">'
       +'<div class="outlook-h">🔭 '+tr('helpOutlookLabel')+'</div>'
