@@ -967,8 +967,17 @@ function mjoWheel(mjo){  var t = function(k){ return tr(k); };
     var a=PH[ph];
     var fill='#f1f5f9';
     if (ph===4||ph===5) fill='#fef9c3';                 // Maritime band (us)
-    if (active && ph===cur){
-      var e=mjoEffect(ph); fill = e==='wet'?'#bfdbfe':e==='dry'?'#fecaca':'#e2e8f0';
+    if (ph===cur){
+      var e=mjoEffect(ph);
+      if (active){
+        // strong: full effect colour
+        fill = e==='wet'?'#bfdbfe':e==='dry'?'#fecaca':'#e2e8f0';
+      } else {
+        // weak: faint tint of the effect colour, so the current phase is still
+        // legible without implying the MJO is strong.
+        fill = e==='wet'?'#eff6ff':e==='dry'?'#fef2f2':'#f8fafc';
+        if (ph===4||ph===5) fill='#fef9c3'; // keep Maritime tint if current+weak
+      }
     }
     svg+=wedge(a[0],a[1],fill);
     var mid=(a[0]+a[1])/2, lp=pol(mid,(R+rIn)/2);
@@ -993,6 +1002,10 @@ function mjoWheel(mjo){  var t = function(k){ return tr(k); };
     // direction from the RMM vector angle
     var ang = Math.atan2(mjo.rmm2, mjo.rmm1); // radians, CCW from +x
     var px = cx + rPlot*Math.cos(ang), py = cy - rPlot*Math.sin(ang);
+    // faint line from centre to the dot — shows which way the MJO points even
+    // when the amplitude is small and the dot huddles near the middle.
+    var lx = cx + (rPlot+6)*Math.cos(ang), ly = cy - (rPlot+6)*Math.sin(ang);
+    svg+='<line x1="'+cx+'" y1="'+cy+'" x2="'+lx.toFixed(1)+'" y2="'+ly.toFixed(1)+'" stroke="#0f766e" stroke-width="1.5" opacity="0.45"/>';
     svg+='<circle cx="'+px.toFixed(1)+'" cy="'+py.toFixed(1)+'" r="5" fill="#0f766e" stroke="#fff" stroke-width="1.5"/>';
   }
   svg+='</svg>';
