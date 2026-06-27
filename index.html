@@ -61,6 +61,10 @@
   .bignum small{font-size:18px;font-weight:600;color:var(--muted)}
   .anomunit{font-size:13px;font-weight:600;color:var(--muted);margin:-2px 0 2px;
     letter-spacing:.02em}
+  .iodhead{text-align:center;margin:8px 0 2px}
+  .iodnum{font-size:34px;font-weight:800;line-height:1;margin:6px 0}
+  .iodhead .anomunit{text-align:center}
+  .iodsrc{font-weight:400;color:var(--muted)}
   .phase-label{font-size:17px;font-weight:700;margin-top:4px}
   .phase-desc{font-size:13px;color:var(--muted);margin-top:8px}
   .strength{font-size:13px;font-weight:600;margin-top:6px}
@@ -113,6 +117,8 @@
   .help .nowline{background:#f0f9ff;border:1px solid #bae6fd;border-radius:10px;
     padding:11px 12px;color:#0c4a6e;margin-top:14px}
   .help .helpdiv{height:1px;background:var(--line);margin:14px 0 4px}
+  .help .helpnote{background:#f8fafc;border:1px solid var(--line);border-left:3px solid #94a3b8;
+    border-radius:8px;padding:10px 12px;font-size:12.5px;line-height:1.6;color:#475569;margin:8px 0}
   .help .maptitle{font-size:13px;font-weight:700;color:#0c4a6e;margin:14px 0 6px}
   .help .mapwrap{background:#f8fafc;border:1px solid var(--line);border-radius:10px;
     padding:8px}
@@ -251,12 +257,12 @@ var T = {
   weeklyTitle:{zh:'每周 Niño 3.4 海温距平', en:'Weekly Niño 3.4 SST anomaly'},
   trendTitle: {zh:'近 24 季趋势', en:'Last 24 seasons trend'},
   iodTitle:   {zh:'印度洋偶极 (IOD)', en:'Indian Ocean Dipole (IOD)'},
-  iodHint:    {zh:'IOD = 印度洋东西两侧的海温差。对马来西亚的雨量影响很直接，尤其是东侧（靠近苏门答腊）。每月更新。',
-               en:'IOD = the east–west sea-temperature gradient across the Indian Ocean. It directly affects Malaysian rainfall, especially the eastern side (near Sumatra). Updated monthly.'},
+  iodHint:    {zh:'IOD = 印度洋东西两侧的海温差。对马来西亚的雨量影响很直接，尤其是东侧（靠近苏门答腊）。数据来自 BOM，每周更新。',
+               en:'IOD = the east–west sea-temperature gradient across the Indian Ocean. It directly affects Malaysian rainfall, especially the eastern side (near Sumatra). From BOM, updated weekly.'},
   iodLatest:  {zh:'最新值 (IOD)', en:'Latest (IOD)'},
   iodSrc:     {zh:'数据来源', en:'Source'},
-  iodFail:    {zh:'⚠️ 暂时无法取得最新 IOD 数值。可能是数据源（BOM）页面有变动，需要更新程序。为避免误导，这里不显示过期或猜测的数值。',
-               en:'⚠️ Latest IOD value is temporarily unavailable. The data source (BOM) page may have changed and the code needs updating. To avoid misleading you, no stale or guessed value is shown here.'},
+  iodFail:    {zh:'IOD 数值暂时无法取得。这通常只是数据源 (BOM) 改了网页措辞，属于正常情况——为避免误导，这里不显示过期或猜测的数值。厄尔尼诺数据照常运作。详情见上方 ⓘ 说明。',
+               en:'IOD value temporarily unavailable. This usually just means the data source (BOM) reworded their page — it\'s expected. To avoid misleading you, no stale or guessed value is shown. The El Niño data is unaffected. See the ⓘ guide for details.'},
   iodPrev:    {zh:'上一月', en:'Previous month'},
   iodTrend:   {zh:'近三月走向', en:'3-month trend'},
   iodPos:     {zh:'正 IOD', en:'Positive IOD'},
@@ -275,8 +281,10 @@ var T = {
   iodSlow:    {zh:'', en:''},
   iodAged:    {zh:'⚠️ IOD 数值日期为 {m}，可能已过期，需检查更新。暂不显示农事建议。',
                en:'⚠️ IOD value is dated {m} and may be out of date — needs a check. Farm advice withheld until refreshed.'},
-  helpIod:    {zh:'🌏 印度洋偶极 (IOD)：看印度洋东西两侧的海温差 (DMI)。负 IOD = 东侧（靠苏门答腊、离我们近）偏暖 → 本区偏湿、早上多雨；正 IOD = 东侧偏冷 → 本区偏干。门槛：≥ +0.4 为正，≤ −0.4 为负，中间为中性。IOD 与厄尔尼诺／拉尼娜会一起作用：负 IOD + 拉尼娜最湿，正 IOD + 厄尔尼诺最干。每月更新一次。',
-               en:'🌏 Indian Ocean Dipole (IOD): the east–west sea-temperature gradient (DMI) across the Indian Ocean. Negative IOD = the eastern side (near Sumatra, close to us) is warmer → wetter here, often morning rain; positive IOD = cooler eastern side → drier here. Thresholds: ≥ +0.4 positive, ≤ −0.4 negative, in between neutral. IOD works together with El Niño/La Niña: negative IOD + La Niña is wettest, positive IOD + El Niño is driest. Updated monthly.'},
+  helpIod:    {zh:'🌏 印度洋偶极 (IOD)：看印度洋东西两侧的海温差。负 IOD = 东侧（靠苏门答腊、离我们近）偏暖 → 本区偏湿、早上多雨；正 IOD = 东侧偏冷 → 本区偏干。门槛：≥ +0.4 为正，≤ −0.4 为负，中间为中性。IOD 与厄尔尼诺／拉尼娜会一起作用：负 IOD + 拉尼娜最湿，正 IOD + 厄尔尼诺最干。数据来自澳洲气象局 (BOM) 的每周 IOD 指数。',
+               en:'🌏 Indian Ocean Dipole (IOD): the east–west sea-temperature gradient across the Indian Ocean. Negative IOD = the eastern side (near Sumatra, close to us) is warmer → wetter here, often morning rain; positive IOD = cooler eastern side → drier here. Thresholds: ≥ +0.4 positive, ≤ −0.4 negative, in between neutral. IOD works together with El Niño/La Niña: negative IOD + La Niña is wettest, positive IOD + El Niño is driest. The value comes from the Bureau of Meteorology (BOM) weekly IOD index.'},
+  helpIodNote:{zh:'ℹ️ 关于「IOD 暂时无法取得」：与 NOAA 的厄尔尼诺数据不同，IOD 没有干净的机器可读数据源，我们是从 BOM 网页上抓取那句「IOD index is …」。如果哪天看到红色提示「暂时无法取得」，多数情况只是 BOM 改了网页措辞，抓取对不上了——这是程序「宁可不显示，也不给过期或乱猜的数字」的安全设计，不是系统坏了，也不是数据出错。厄尔尼诺部分完全不受影响，照常运作。看到这个提示时不用紧张，只需把那句话的新写法告诉开发者，改一行抓取规则即可。预计每隔几个月可能需要微调一次。',
+               en:'ℹ️ About the "IOD temporarily unavailable" notice: unlike the NOAA El Niño data, IOD has no clean machine-readable feed, so we scrape the sentence "IOD index is …" from BOM\'s web page. If you ever see the red "temporarily unavailable" notice, it almost always just means BOM reworded their page so the scrape no longer matches. This is the app\'s safety design deliberately choosing to show nothing rather than a stale or guessed number — it is not a breakage and not bad data. The El Niño side is completely unaffected and keeps working. No need to worry when you see it: just send the developer BOM\'s new wording and it\'s a one-line fix. Expect this maybe once every few months.'},
   farmTitle:  {zh:'对果园的意义', en:'What it means for the orchard'},
   srcTitle:   {zh:'数据来源', en:'Data sources'},
   qrTitle:    {zh:'扫码打开这个 App', en:'Scan to open this app'},
@@ -604,6 +612,7 @@ function iodCard(iod){
   if (!iod.ok || typeof iod.value !== 'number') {
     return '<div class="card">'
       +'<div class="cardtitle"><span class="dot"></span>'+tr('iodTitle')+'</div>'
+      +'<div class="cardhint">'+tr('iodHint')+'</div>'
       +'<div class="iodfail">'+tr('iodFail')+'</div>'
     +'</div>';
   }
@@ -612,13 +621,7 @@ function iodCard(iod){
   var pClass = p==='pos' ? 'warm' : p==='neg' ? 'cool' : 'neutral';
   var phaseLbl = p==='pos' ? tr('iodPosCond') : p==='neg' ? tr('iodNegCond') : tr('iodNeuCond');
   var badgeCls = p==='pos' ? 'phase-warm' : p==='neg' ? 'phase-cool' : 'phase-neutral';
-  var farm = p==='pos' ? tr('iodFarmPos') : p==='neg' ? tr('iodFarmNeg') : tr('iodFarmNeu');
-  var farmCls = p==='pos' ? 'verdict-warm' : p==='neg' ? 'verdict-cool' : 'verdict-neutral';
   var col = p==='pos' ? 'var(--warm)' : p==='neg' ? 'var(--cool)' : 'var(--ink)';
-
-  // --- Staleness guard on the BOM "as of" date ---
-  // If we can read the date and it's > ~5 weeks old, the scrape may be stuck on
-  // an old page; show the value but flag that it needs a check (no farm advice).
   var asOfTs = iod.asOf ? bomDateTs(iod.asOf) : 0;
   var tooOld = asOfTs > 0 && (Date.now() - asOfTs) > 35*24*3600*1000;
   var asOfTxt = iod.asOf ? iod.asOf : '';
@@ -626,22 +629,29 @@ function iodCard(iod){
   var html = '<div class="card">'
     +'<div class="cardtitle"><span class="dot"></span>'+tr('iodTitle')+'</div>'
     +'<div class="cardhint">'+tr('iodHint')+'</div>'
-    +'<div style="text-align:center;margin:6px 0 2px">'
+    +'<div class="iodhead">'
       +'<span class="phase-badge '+badgeCls+'">'+phaseLbl+'</span>'
-    +'</div>'
-    +'<div class="bignum" style="font-size:38px;text-align:center;color:'+col+'">'+fmt(v)+'</div>'
-    +'<div class="anomunit" style="text-align:center">'+tr('iodUnit')+'</div>';
-
+      +'<div class="iodnum" style="color:'+col+'">'+fmt(v)+'</div>'
+      +'<div class="anomunit">'+tr('iodUnit')+'</div>'
+    +'</div>';
   if (tooOld) {
-    // Value present but the source date is stale — flag, withhold advice.
+    // Value present but the source date is stale — flag it (advice withheld
+    // in the orchard card too).
     html += '<div class="iodage">'+tr('iodAged').replace('{m}', asOfTxt)+'</div>';
-  } else {
-    html += '<div class="verdict '+farmCls+'" style="margin-top:14px;border-radius:10px;border:none">'+farm+'</div>';
   }
   html += '<div class="row" style="margin-top:8px"><span class="k">'+tr('iodLatest')+'</span><span class="v '+pClass+'">'+(asOfTxt?asOfTxt+' · ':'')+fmt(v)+'</span></div>'
-    +'<div class="row"><span class="k">'+tr('iodSrc')+'</span><span class="v" style="font-weight:400;color:var(--muted)">BOM</span></div>'
+    +'<div class="row"><span class="k">'+tr('iodSrc')+'</span><span class="v iodsrc">BOM</span></div>'
   +'</div>';
   return html;
+}
+// Returns the IOD orchard-advice line for the "what it means" card, or '' if
+// IOD is unavailable/stale (so we never give advice off bad data).
+function iodFarmLine(iod){
+  if (!iod || !iod.ok || typeof iod.value !== 'number') return '';
+  var asOfTs = iod.asOf ? bomDateTs(iod.asOf) : 0;
+  if (asOfTs > 0 && (Date.now() - asOfTs) > 35*24*3600*1000) return ''; // stale
+  var p = iodPhaseOf(iod.value);
+  return p==='pos' ? tr('iodFarmPos') : p==='neg' ? tr('iodFarmNeg') : tr('iodFarmNeu');
 }
 // Parse a BOM date like "14 June 2026" or "3 May" (no year) into a timestamp.
 // If the year is missing, assume the most recent past occurrence.
@@ -885,7 +895,10 @@ function render(roni, weekly, cachedAt, iod){
 
   +'<div class="card farm">'
     +'<div class="cardtitle"><span class="dot"></span>'+tr('farmTitle')+'</div>'
-    +'<p>'+tr(farmKey)+'</p>'
+    +'<p><b>ENSO:</b> '+tr(farmKey)+'</p>'
+    +(iodFarmLine(iod)
+        ? '<p style="margin-top:9px"><b>IOD:</b> '+iodFarmLine(iod)+'</p>'
+        : '')
     +'<p style="font-size:11px;color:#92400e;margin-top:10px">'+tr('disclaimer')+'</p>'
   +'</div>'
 
@@ -938,6 +951,7 @@ function helpContent(){
     +'<div class="mapwrap">'+ninoMap()+'</div>'
     +'<div class="helpdiv"></div>'
     +'<p>'+tr('helpIod')+'</p>'
+    +'<p class="helpnote">'+tr('helpIodNote')+'</p>'
     +(nowTxt?'<p class="nowline"><b>'+tr('helpNow')+'</b>'+nowTxt+'</p>':'')
     +'<div class="outlook">'
       +'<div class="outlook-h">🔭 '+tr('helpOutlookLabel')+'</div>'
