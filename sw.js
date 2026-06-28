@@ -9,7 +9,7 @@
  * Bump CACHE_VERSION whenever index.html or this file changes, so users get
  * the new version instead of a stale cached one.
  */
-const CACHE_VERSION = 'enso-v1.7.1';
+const CACHE_VERSION = 'enso-v1.8.0';
 const SHELL = [
   './',
   './index.html',
@@ -48,7 +48,8 @@ self.addEventListener('activate', function(event){
 self.addEventListener('fetch', function(event){
   var url = event.request.url;
   // Let data/API calls go straight to the network (don't serve stale from SW).
-  if (url.indexOf('workers.dev') !== -1 || url.indexOf('feed=') !== -1) {
+  if (url.indexOf('workers.dev') !== -1 || url.indexOf('feed=') !== -1
+      || url.indexOf('open-meteo.com') !== -1) {
     return; // default browser handling; page catches failures
   }
   // App shell: cache-first, fall back to network, update cache on success.

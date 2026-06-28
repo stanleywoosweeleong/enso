@@ -95,6 +95,9 @@
     margin:10px 0 0;font-size:11.5px;line-height:1.5;color:#92400e}
   .iodfail{background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:11px 13px;
     margin:8px 0 0;font-size:12px;line-height:1.55;color:#b91c1c}
+  .surgealert{background:#fef2f2;border:1.5px solid #f87171;border-radius:10px;
+    padding:12px 14px;margin:12px 0 0;font-size:13px;font-weight:600;line-height:1.55;
+    color:#b91c1c;box-shadow:0 1px 3px rgba(248,113,113,.2)}
   /* ---- Info-guide overlay (full-screen, toggled) ---- */
   .help-overlay{position:fixed;inset:0;background:rgba(15,23,42,.55);
     z-index:200;display:none;align-items:flex-end;justify-content:center}
@@ -321,6 +324,41 @@ var T = {
                  en:'This app reads NOAA PSL\u2019s ROMI real-time index (updated daily) and converts it to the standard RMM phase. Both NOAA and BOM publish fuller phase diagrams and propagation forecasts.'},
   mjoOutlookCheck:{zh:'查看 NOAA 最新 MJO ↗', en:'Check NOAA\u2019s latest MJO ↗'},
   mjoNowLabel:{zh:'现在的情况（每日）：', en:'Right now (daily): '},
+  // ---- Monsoon (status + surge) ----
+  monTitle:   {zh:'季风状态 + 季风涌', en:'Monsoon status + surge'},
+  monShort:   {zh:'季风', en:'Monsoon'},
+  monHint:    {zh:'马来西亚两大季风：东北季风（11–3月，主雨季）与西南季风（5月底–9月，半岛偏干）。东北季风期间的「季风涌」（来自南海的强北风）会带来连续 1–3 天暴雨与水患。数据：Open-Meteo 925 hPa 风场。',
+               en:'Malaysia\u2019s two monsoons: Northeast (Nov–Mar, main rainy season) and Southwest (late May–Sep, drier for the Peninsula). During the NE monsoon, a "surge" (strong northerly wind from the South China Sea) brings 1–3 days of heavy rain and floods. Data: Open-Meteo 925-hPa winds.'},
+  monNE:      {zh:'东北季风', en:'Northeast Monsoon'},
+  monSW:      {zh:'西南季风', en:'Southwest Monsoon'},
+  monInter:   {zh:'季风过渡期', en:'Inter-monsoon'},
+  monStatusLbl:{zh:'当前季风', en:'Current monsoon'},
+  monMsiLbl:  {zh:'季风涌指数 (MSI)', en:'Surge index (MSI)'},
+  monSrc:     {zh:'数据来源', en:'Source'},
+  monSurgeOn: {zh:'⚠️ 季风涌活跃（MSI {v}，已连续 ≥3 天 < −8 m/s）。未来 1–3 天可能持续强降雨，注意排水、防洪、暂缓园区作业。',
+               en:'⚠️ Monsoon surge active (MSI {v}, ≥3 days below −8 m/s). Expect continued heavy rain over 1–3 days — watch drainage, flooding, and hold off fieldwork.'},
+  monSurgeOff:{zh:'目前无季风涌（MSI {v}）。东北季风期间会持续监测。',
+               en:'No active surge right now (MSI {v}). Monitored through the NE monsoon.'},
+  monSurgeNA: {zh:'季风涌为东北季风（11–3月）现象，当前季节不适用。',
+               en:'Monsoon surges are a Northeast-Monsoon (Nov–Mar) phenomenon — not applicable this season.'},
+  monStale:   {zh:'⚠️ 季风风场数据似乎未更新，暂不显示季风涌判断。',
+               en:'⚠️ The monsoon wind data appears out of date; surge reading withheld for now.'},
+  // farm advice
+  monFarmSurge:{zh:'季风涌活跃 — 未来 1–3 天可能持续暴雨。优先防洪排水，暂缓喷药、采收与园区车辆通行。',
+               en:'Surge active — 1–3 days of heavy rain likely. Prioritise drainage and flood prep; hold spraying, harvesting, and vehicle access.'},
+  monFarmNE:  {zh:'东北季风（主雨季）— 雨量偏多，留意排水与根部病害，喷药窗口变窄；密切关注季风涌预警。',
+               en:'Northeast monsoon (main rainy season) — wetter overall; watch drainage and root disease, spray windows narrow, and watch for surge alerts.'},
+  monFarmSW:  {zh:'西南季风 — 半岛相对偏干，注意灌溉与火患；适合安排喷药与采收。',
+               en:'Southwest monsoon — relatively drier for the Peninsula; mind irrigation and fire risk, good for spraying and harvesting.'},
+  monFarmInter:{zh:'季风过渡期 — 天气多变、午后雷雨多，按短期天气预报灵活安排农活。',
+               en:'Inter-monsoon — changeable weather with afternoon thunderstorms; plan fieldwork flexibly around short-range forecasts.'},
+  // help guide
+  helpMon:    {zh:'🌧️ 季风状态 + 季风涌：马来西亚一年有两个季风。东北季风（约 11–3月）是主雨季，东海岸（吉兰丹、登嘉楼、彭亨）与砂拉越、沙巴常有大雨与水患；西南季风（约 5月底–9月）对半岛相对偏干。两者之间是过渡期。最危险的是东北季风期间的「季风涌」：来自西伯利亚的冷空气化作强北风冲过南海，带来连续 1–3 天的暴雨。我们用 MetMalaysia 采用的季风涌指数 (MSI)：925 hPa 经向风在 110–117.5°E、15°N 的平均；当连续 3 天 < −8 m/s 即判定为季风涌。数据来自 Open-Meteo 的 925 hPa 风场（即时计算）。注意：这是趋势监测，正式预警请以 MetMalaysia 官方为准。',
+               en:'🌧️ Monsoon status + surge: Malaysia has two monsoons. The Northeast monsoon (~Nov–Mar) is the main rainy season, bringing heavy rain and floods to the east coast (Kelantan, Terengganu, Pahang) and Sarawak/Sabah; the Southwest monsoon (~late May–Sep) is relatively drier for the Peninsula, with an inter-monsoon transition between. The biggest hazard is the NE-monsoon "surge": cold air from Siberia becomes a strong northerly wind racing across the South China Sea, bringing 1–3 days of downpour. We use MetMalaysia\u2019s Meridional Surge Index (MSI): the average 925-hPa meridional wind over 110–117.5°E along 15°N; a surge is flagged when it stays below −8 m/s for 3 consecutive days. Data is computed live from Open-Meteo 925-hPa winds. Note: this is trend monitoring — for official warnings, always follow MetMalaysia.'},
+  monOutlookLabel:{zh:'MetMalaysia 官方预警', en:'MetMalaysia official warnings'},
+  monOutlookTxt:{zh:'马来西亚气象局 (MetMalaysia) 发布官方的季风涌预警与暴雨警报（黄／橙／红三级）。本 App 的季风涌为即时估算，正式预警以官方为准。',
+                 en:'The Malaysian Meteorological Department (MetMalaysia) issues official surge alerts and heavy-rain warnings (Yellow/Orange/Red). This app\u2019s surge reading is a live estimate; always defer to MetMalaysia for official warnings.'},
+  monOutlookCheck:{zh:'查看 MetMalaysia 预警 ↗', en:'Check MetMalaysia warnings ↗'},
   iodUnit:    {zh:'°C · IOD 指数（BOM 每周）', en:'°C · IOD index (BOM weekly)'},
   iodSlow:    {zh:'', en:''},
   iodAged:    {zh:'⚠️ IOD 数值日期为 {m}，可能已过期，需检查更新。暂不显示农事建议。',
@@ -865,6 +903,62 @@ function mjoFarmLine(mjo){
   return tr(key).replace('{p}', mjo.phase);
 }
 
+// Builds the Monsoon card: seasonal status (NE/SW/inter) + surge index (MSI).
+// Surge is a Northeast-Monsoon phenomenon; in other seasons we say "off-season".
+function monsoonCard(mon){
+  if (!mon) return '';
+  // staleness: Open-Meteo daily, so latest day should be ~today.
+  var dataTs = mon.date ? new Date(mon.date+'T00:00:00Z').getTime() : 0;
+  var stale = dataTs>0 && (Date.now()-dataTs) > 4*24*3600*1000;
+
+  var statusLbl = mon.status==='NE' ? tr('monNE') : mon.status==='SW' ? tr('monSW') : tr('monInter');
+  var statusCls = mon.status==='NE' ? 'phase-cool' : mon.status==='SW' ? 'phase-warm' : 'phase-neutral';
+
+  // surge only meaningful in NE monsoon
+  var surgeSeason = (mon.status==='NE');
+  var surgeActive = surgeSeason && mon.surge;
+  var msiTxt = (typeof mon.msi==='number') ? mon.msi.toFixed(1)+' m/s' : '—';
+
+  var html = '<div class="card">'
+    +'<div class="cardtitle"><span class="dot"></span>'+tr('monTitle')+'</div>'
+    +'<div class="cardhint">'+tr('monHint')+'</div>'
+    +'<div style="text-align:center;margin:8px 0 2px">'
+      +'<span class="phase-badge '+statusCls+'">'+statusLbl+'</span>'
+    +'</div>';
+
+  if (stale){
+    html += '<div class="iodage">'+tr('monStale')+'</div>';
+  } else if (surgeActive){
+    // active surge — the high-alert state
+    html += '<div class="surgealert">'+tr('monSurgeOn').replace('{v}', msiTxt)+'</div>';
+  } else if (surgeSeason){
+    // NE season, no surge currently
+    html += '<div class="verdict verdict-neutral" style="margin-top:12px;border-radius:10px;border:none">'+tr('monSurgeOff').replace('{v}', msiTxt)+'</div>';
+  } else {
+    // not NE season — surge not applicable
+    html += '<div class="cardhint" style="margin:10px 0 0">'+tr('monSurgeNA')+'</div>';
+  }
+
+  // detail rows
+  html += '<div class="row" style="margin-top:8px"><span class="k">'+tr('monStatusLbl')+'</span><span class="v">'+statusLbl+'</span></div>';
+  if (surgeSeason){
+    html += '<div class="row"><span class="k">'+tr('monMsiLbl')+'</span><span class="v '+(surgeActive?'cool':'')+'">'+msiTxt+'</span></div>';
+  }
+  html += '<div class="row"><span class="k">'+tr('monSrc')+'</span><span class="v iodsrc">Open-Meteo · 925 hPa</span></div>'
+  +'</div>';
+  return html;
+}
+// Monsoon orchard-advice line, or '' if no data/stale.
+function monsoonFarmLine(mon){
+  if (!mon) return '';
+  var dataTs = mon.date ? new Date(mon.date+'T00:00:00Z').getTime() : 0;
+  if (dataTs>0 && (Date.now()-dataTs) > 4*24*3600*1000) return '';
+  if (mon.status==='NE' && mon.surge) return tr('monFarmSurge');
+  if (mon.status==='NE') return tr('monFarmNE');
+  if (mon.status==='SW') return tr('monFarmSW');
+  return tr('monFarmInter');
+}
+
 // Inline SVG map of the four Nino regions, west->east, with Malaysia marked.
 // Pure SVG so it works offline. viewBox scales to the card width on phone.
 function ninoMap(){  var t = function(k){ return tr(k); };
@@ -1033,6 +1127,89 @@ function getFeed(name){
     .then(function(r){ if(!r.ok) throw new Error(name+' '+r.status); return r.text(); });
 }
 
+// ===================== MONSOON (status + surge index) =====================
+// Computed from Open-Meteo 925-hPa winds, called directly from the app.
+//
+// MSI (Meridional Surge Index, MetMalaysia / Chang 2005): the average 925-hPa
+// meridional (north-south) wind over 110-117.5E along 15N. A surge episode is
+// MSI < -8 m/s for 3 consecutive days (strong cold northerly push from the SCS).
+//
+// Monsoon status: Northeast monsoon ~Nov-Mar, Southwest ~late May-Sep, with
+// inter-monsoon between. We confirm with the 925-hPa wind direction over the
+// Malaysian region so the label reflects the actual flow, not just the calendar.
+var MSI_LON = [110, 112.5, 115, 117.5]; // sample points along 15N
+var MSI_LAT = 15;
+var SURGE_THRESH = -8;   // m/s
+var SURGE_DAYS = 3;      // consecutive days
+// meridional (northward +) component from speed + met direction (FROM)
+function vWind(speed, dirDeg){ return -speed * Math.cos(dirDeg*Math.PI/180); }
+function uWind(speed, dirDeg){ return -speed * Math.sin(dirDeg*Math.PI/180); }
+
+function fetchMonsoon(){
+  // One multi-point Open-Meteo call for the MSI box (daily mean 925hPa wind),
+  // plus a point over Peninsular Malaysia for the status wind direction.
+  var lats = MSI_LON.map(function(){ return MSI_LAT; }).concat([3.8]);  // +Triang-ish
+  var lons = MSI_LON.concat([102.4]);
+  var base = 'https://api.open-meteo.com/v1/forecast'
+    + '?latitude=' + lats.join(',')
+    + '&longitude=' + lons.join(',')
+    + '&daily=wind_speed_925hPa_mean,wind_direction_925hPa_dominant'
+    + '&wind_speed_unit=ms&timezone=UTC&past_days=7&forecast_days=1';
+  return fetch(base, {cache:'no-store'})
+    .then(function(r){ if(!r.ok) throw new Error('open-meteo '+r.status); return r.json(); })
+    .then(function(j){
+      // j is an array (one object per coordinate) when multiple coords given.
+      var arr = Array.isArray(j) ? j : [j];
+      if (arr.length < MSI_LON.length+1) throw new Error('monsoon: missing points');
+      var days = arr[0].daily.time;
+      var n = days.length;
+      // MSI per day = average V over the box points
+      var msi = [];
+      for (var d=0; d<n; d++){
+        var sum=0, cnt=0;
+        for (var k=0; k<MSI_LON.length; k++){
+          var sp = arr[k].daily.wind_speed_925hPa_mean[d];
+          var di = arr[k].daily.wind_direction_925hPa_dominant[d];
+          if (sp==null || di==null) continue;
+          sum += vWind(sp, di); cnt++;
+        }
+        msi.push(cnt ? sum/cnt : null);
+      }
+      // surge = MSI < threshold for >= SURGE_DAYS consecutive days (most recent run)
+      var run=0, surgeNow=false, latestMSI=null;
+      for (var i=0;i<msi.length;i++){
+        if (msi[i]==null) { run=0; continue; }
+        latestMSI = msi[i];
+        if (msi[i] < SURGE_THRESH){ run++; if (run>=SURGE_DAYS) surgeNow=true; }
+        else run=0;
+      }
+      // status wind over Malaysia point (last array element), latest day
+      var mp = arr[MSI_LON.length].daily;
+      var li = n-1;
+      var mSpeed = mp.wind_speed_925hPa_mean[li];
+      var mDir = mp.wind_direction_925hPa_dominant[li];
+      var status = monsoonStatus(new Date(), mDir);
+      return {
+        msi: latestMSI, surge: surgeNow, surgeRun: run,
+        status: status, windDir: mDir, windSpeed: mSpeed,
+        date: days[li], asOf: days[li]
+      };
+    });
+}
+// Determine monsoon phase from calendar, refined by 925hPa wind direction.
+// dir is met "from" degrees over Peninsular Malaysia (may be null).
+function monsoonStatus(now, dir){
+  var m = now.getUTCMonth()+1; // 1-12
+  // calendar baseline
+  var cal;
+  if (m===11||m===12||m===1||m===2||m===3) cal='NE';
+  else if (m>=6 && m<=9) cal='SW';
+  else cal='INTER'; // Apr-May, Oct transitions
+  // wind refinement: NE monsoon = flow from NE (dir ~0-90, i.e. N to E);
+  // SW monsoon = flow from SW (dir ~180-270). Only used to confirm/soften.
+  return cal;
+}
+
 function load(){
   var app = document.getElementById('app');
   app.innerHTML = '<div class="loading" id="loading"><div class="spinner"></div><div>'
@@ -1041,7 +1218,10 @@ function load(){
   // fetches never reject the whole Promise.all — they resolve to null on failure.
   var iodFeed = getFeed('iod').catch(function(){ return null; });
   var mjoFeed = getFeed('mjo').catch(function(){ return null; });
-  Promise.all([ getFeed('roni'), getFeed('weekly'), iodFeed, mjoFeed ])
+  // Monsoon status + surge index: computed from Open-Meteo 925-hPa winds,
+  // fetched directly (not via the Worker). Also a bonus — null on failure.
+  var monFeed = fetchMonsoon().catch(function(){ return null; });
+  Promise.all([ getFeed('roni'), getFeed('weekly'), iodFeed, mjoFeed, monFeed ])
     .then(function(res){
       var roni = parseSeasonal(res[0], 2);   // RONI anom in col 2
       var weekly = parseWeekly(res[1]);
@@ -1049,13 +1229,15 @@ function load(){
       // IOD comes back as JSON {ok,value,asOf} from the Worker's BOM scrape.
       var iod = parseIod(res[2]);
       var mjo = parseMJO(res[3]);
+      var mon = res[4]; // already a computed object (or null)
       // Save the fresh feeds so the app can show them next time it's offline.
       try {
         localStorage.setItem('enso-cache', JSON.stringify({
-          roni: res[0], weekly: res[1], iod: res[2] || '', mjo: res[3] || '', at: Date.now()
+          roni: res[0], weekly: res[1], iod: res[2] || '', mjo: res[3] || '',
+          mon: mon || null, at: Date.now()
         }));
       } catch(e){ /* storage full or blocked — ignore */ }
-      render(roni, weekly, null, iod, mjo);
+      render(roni, weekly, null, iod, mjo, mon);
     })
     .catch(function(e){
       // Fetch failed (likely offline). Fall back to the last-saved data.
@@ -1066,7 +1248,7 @@ function load(){
         var weekly = parseWeekly(raw.weekly);
         var iod = parseIod(raw.iod);
         var mjo = parseMJO(raw.mjo);
-        if (roni.length && weekly.length) { render(roni, weekly, raw.at, iod, mjo); return; }
+        if (roni.length && weekly.length) { render(roni, weekly, raw.at, iod, mjo, raw.mon||null); return; }
       }
       renderError(e); // no cache to fall back on
     });
@@ -1085,7 +1267,7 @@ function parseIod(text){
 }
 
 /* ===================== RENDER ===================== */
-function render(roni, weekly, cachedAt, iod, mjo){
+function render(roni, weekly, cachedAt, iod, mjo, mon){
   var latest = roni[roni.length-1];
   var prev   = roni[roni.length-2] || latest;
   var phase  = phaseOf(latest.anom);
@@ -1125,7 +1307,7 @@ function render(roni, weekly, cachedAt, iod, mjo){
   // Stash the inputs so the info-guide overlay can regenerate this live text
   // (and in the current language) whenever it is opened.
   HELP_STATE = { phase:phase, strength:strength, t3:t3,
-                 roni:latest.anom, wk:wkLatest.nino34, iod:iod, mjo:mjo };
+                 roni:latest.anom, wk:wkLatest.nino34, iod:iod, mjo:mjo, mon:mon };
   // Always-visible plain verdict for the hero (the 2-second takeaway).
   var verdict = plainVerdict(phase, phaseOf(wkLatest.nino34));
 
@@ -1182,6 +1364,7 @@ function render(roni, weekly, cachedAt, iod, mjo){
 
   + iodCard(iod)
   + mjoCard(mjo)
+  + monsoonCard(mon)
 
   +'<div class="card">'
     +'<div class="cardtitle"><span class="dot"></span>'+tr('trendTitle')+'</div>'
@@ -1203,6 +1386,9 @@ function render(roni, weekly, cachedAt, iod, mjo){
         : '')
     +(mjoFarmLine(mjo)
         ? '<p style="margin-top:9px"><b>MJO:</b> '+mjoFarmLine(mjo)+'</p>'
+        : '')
+    +(monsoonFarmLine(mon)
+        ? '<p style="margin-top:9px"><b>'+tr('monShort')+':</b> '+monsoonFarmLine(mon)+'</p>'
         : '')
     +'<p style="font-size:11px;color:#92400e;margin-top:10px">'+tr('disclaimer')+'</p>'
   +'</div>'
@@ -1306,6 +1492,18 @@ function helpContent(){
       +'<p>'+tr('mjoOutlookTxt')+'</p>'
       +'<a href="https://psl.noaa.gov/mjo/" target="_blank" rel="noopener">'+tr('mjoOutlookCheck')+'</a>'
     +'</div>'
+    // ---------- Monsoon section ----------
+    +'<div class="helpdiv"></div>'
+    +'<p>'+tr('helpMon')+'</p>'
+    +(s && s.mon ? '<p class="nowline"><b>'+tr('mjoNowLabel')+'</b>'
+        +(s.mon.status==='NE'?tr('monNE'):s.mon.status==='SW'?tr('monSW'):tr('monInter'))
+        +(s.mon.status==='NE' && typeof s.mon.msi==='number' ? ' · MSI '+s.mon.msi.toFixed(1)+' m/s'+(s.mon.surge?' — '+tr('monNE'):'') : '')
+        +'</p>' : '')
+    +'<div class="outlook">'
+      +'<div class="outlook-h">🔭 '+tr('monOutlookLabel')+'</div>'
+      +'<p>'+tr('monOutlookTxt')+'</p>'
+      +'<a href="https://www.met.gov.my/en/" target="_blank" rel="noopener">'+tr('monOutlookCheck')+'</a>'
+    +'</div>'
     // ---------- sources ----------
     +'<div class="helpsrc">'+tr('srcTitle')+'<br>'
       +'NOAA CPC · RONI / Niño 3.4 SST<br>'
@@ -1313,7 +1511,9 @@ function helpContent(){
       +'BOM · IOD weekly index<br>'
       +'<a href="https://www.bom.gov.au/climate/iod/" target="_blank" rel="noopener">BOM Indian Ocean monitoring ↗</a><br>'
       +'NOAA PSL · ROMI (MJO) daily index<br>'
-      +'<a href="https://psl.noaa.gov/mjo/" target="_blank" rel="noopener">NOAA MJO monitoring ↗</a>'
+      +'<a href="https://psl.noaa.gov/mjo/" target="_blank" rel="noopener">NOAA MJO monitoring ↗</a><br>'
+      +'Open-Meteo · 925-hPa winds (monsoon/surge)<br>'
+      +'<a href="https://www.met.gov.my/en/" target="_blank" rel="noopener">MetMalaysia official warnings ↗</a>'
     +'</div>'
     +'<div class="qrbox">'
       +'<div class="qrtitle">📱 '+tr('qrTitle')+'</div>'
