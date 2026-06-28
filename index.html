@@ -359,6 +359,17 @@ var T = {
   monOutlookTxt:{zh:'马来西亚气象局 (MetMalaysia) 发布官方的季风涌预警与暴雨警报（黄／橙／红三级）。本 App 的季风涌为即时估算，正式预警以官方为准。',
                  en:'The Malaysian Meteorological Department (MetMalaysia) issues official surge alerts and heavy-rain warnings (Yellow/Orange/Red). This app\u2019s surge reading is a live estimate; always defer to MetMalaysia for official warnings.'},
   monOutlookCheck:{zh:'查看 MetMalaysia 预警 ↗', en:'Check MetMalaysia warnings ↗'},
+  // ---- ITCZ explainer (concept, no data feed) ----
+  helpItcz:   {zh:'🌍 赤道辐合带 (ITCZ)：这是地球上最多雨的一条带——南北半球的信风在赤道附近相遇、空气被迫上升，形成连绵的雷暴云带，是热带降雨的「总开关」。马来西亚就在 ITCZ 的活动范围内（约 1–7°N）。关键是：ITCZ 会随太阳南北移动，一年两次经过我们头顶——大约 3–5月 与 10–11月，这正是「季风过渡期」，也是我们一年中雷暴最猛、午后暴雨最多的时候。换句话说，过渡期的大雨，本质就是 ITCZ 正压在我们上方。',
+               en:'🌍 Inter-Tropical Convergence Zone (ITCZ): the rainiest belt on Earth — where the trade winds of the two hemispheres meet near the equator, air is forced upward into a near-continuous band of thunderstorms. It is the master "switch" of tropical rainfall, and Malaysia sits right in its range (~1–7°N). The key point: the ITCZ migrates north and south with the sun, passing over us twice a year — roughly Mar–May and Oct–Nov. Those are the "inter-monsoon" periods, and our most thundery, afternoon-downpour time of year. In other words, the inter-monsoon heavy rain is essentially the ITCZ sitting overhead.'},
+  helpItczNote:{zh:'ℹ️ ITCZ 没有单一的「每日数值」可以像 ENSO／IOD／MJO 那样直接显示，所以这里只作概念说明，不另设数据卡。其实你已经在间接追踪它了：季风状态、MJO、过渡期，都是 ITCZ 位置与强度的不同侧面。把上面几张卡一起看，就是在看 ITCZ 对本区的影响。',
+               en:'ℹ️ The ITCZ has no single daily index to display the way ENSO/IOD/MJO do, so this is an explainer only — no separate data card. You are in fact already tracking it indirectly: the monsoon status, the MJO, and the inter-monsoon transitions are all different facets of where the ITCZ is and how strong it is. Reading the cards above together is reading the ITCZ\u2019s influence on our region.'},
+  itczDiagTitle:{zh:'ITCZ 一年如何经过马来西亚', en:'How the ITCZ moves past Malaysia through the year'},
+  itczLabelN: {zh:'7–8月：ITCZ 偏北（西南季风，半岛偏干）', en:'Jul–Aug: ITCZ to the north (SW monsoon, drier Peninsula)'},
+  itczLabelMid:{zh:'3–5月 与 10–11月：ITCZ 过境（过渡期，雷暴最多）', en:'Mar–May & Oct–Nov: ITCZ overhead (inter-monsoon, most storms)'},
+  itczLabelS: {zh:'12–2月：ITCZ 偏南（东北季风，东海岸大雨）', en:'Dec–Feb: ITCZ to the south (NE monsoon, east-coast rain)'},
+  itczMY:     {zh:'马来西亚', en:'Malaysia'},
+  itczEq:     {zh:'赤道', en:'Equator'},
   iodUnit:    {zh:'°C · IOD 指数（BOM 每周）', en:'°C · IOD index (BOM weekly)'},
   iodSlow:    {zh:'', en:''},
   iodAged:    {zh:'⚠️ IOD 数值日期为 {m}，可能已过期，需检查更新。暂不显示农事建议。',
@@ -1106,7 +1117,46 @@ function mjoWheel(mjo){  var t = function(k){ return tr(k); };
   return svg;
 }
 
-// Offline QR code for the app URL (https://stanleywoosweeleong.github.io/enso/).
+// Simple seasonal diagram: the ITCZ rain-band's three positions through the
+// year (north / overhead / south) relative to Malaysia's fixed latitude.
+// Concept illustration only — not live data. Highlights the current season's
+// band based on the month.
+function itczDiagram(){  var t=function(k){return tr(k);};
+  var m = (new Date()).getUTCMonth()+1;
+  // which band is "active" now: N (Jul-Aug-ish SW), mid (inter), S (NE)
+  var active;
+  if (m>=6 && m<=9) active='N';
+  else if (m===12||m===1||m===2) active='S';
+  else active='MID'; // Mar-May, Oct-Nov transitions
+  var W=300, H=210;
+  function band(y, col, on){
+    // a wavy rain-band line across the width
+    var d='M10 '+y;
+    for (var x=10;x<=W-10;x+=20){ d+=' Q'+(x+10)+' '+(y-6)+' '+(x+20)+' '+y; }
+    return '<path d="'+d+'" fill="none" stroke="'+col+'" stroke-width="'+(on?5:3)+'" '
+      +'opacity="'+(on?1:0.35)+'" stroke-linecap="round"/>';
+  }
+  var svg='<svg viewBox="0 0 '+W+' '+H+'" class="ninomap" role="img" aria-label="ITCZ seasonal diagram">';
+  // sky background
+  svg+='<rect x="0" y="0" width="'+W+'" height="'+H+'" fill="#f0f9ff" rx="8"/>';
+  // Malaysia latitude line (fixed, middle-ish)
+  var myY=120;
+  svg+='<line x1="10" y1="'+myY+'" x2="'+(W-10)+'" y2="'+myY+'" stroke="#0f766e" stroke-width="1.5" stroke-dasharray="4 3"/>';
+  svg+='<text x="'+(W-12)+'" y="'+(myY+13)+'" font-size="9" font-weight="bold" fill="#0f766e" text-anchor="end">★ '+t('itczMY')+'</text>';
+  // three band positions: north (y=55), overhead (y=120), south (y=180)
+  svg+=band(55,  '#3b82f6', active==='N');
+  svg+='<text x="34" y="42" font-size="8.5" fill="'+(active==='N'?'#1e3a8a':'#64748b')+'" font-weight="'+(active==='N'?'bold':'normal')+'">'+t('itczLabelN')+'</text>';
+  svg+=band(myY, '#1d4ed8', active==='MID');
+  svg+='<text x="34" y="'+(myY-10)+'" font-size="8.5" fill="'+(active==='MID'?'#1e3a8a':'#64748b')+'" font-weight="'+(active==='MID'?'bold':'normal')+'">'+t('itczLabelMid')+'</text>';
+  svg+=band(180, '#3b82f6', active==='S');
+  svg+='<text x="34" y="167" font-size="8.5" fill="'+(active==='S'?'#1e3a8a':'#64748b')+'" font-weight="'+(active==='S'?'bold':'normal')+'">'+t('itczLabelS')+'</text>';
+  // small sun marker drifting with the active band
+  var sunY = active==='N'?55:active==='S'?180:myY;
+  svg+='<circle cx="22" cy="'+sunY+'" r="6" fill="#f59e0b"/>';
+  svg+='</svg>';
+  return svg;
+}
+
 // Matrix baked in as a static SVG path so it works with no network. The URL is
 // fixed, so this never needs regenerating unless the deployment URL changes.
 function qrSvg(){
@@ -1527,6 +1577,12 @@ function helpContent(){
       +'<p>'+tr('monOutlookTxt')+'</p>'
       +'<a href="https://www.met.gov.my/en/" target="_blank" rel="noopener">'+tr('monOutlookCheck')+'</a>'
     +'</div>'
+    // ---------- ITCZ explainer (concept only, no data feed) ----------
+    +'<div class="helpdiv"></div>'
+    +'<p>'+tr('helpItcz')+'</p>'
+    +'<div class="maptitle">🌍 '+tr('itczDiagTitle')+'</div>'
+    +'<div class="mapwrap">'+itczDiagram()+'</div>'
+    +'<p class="helpnote">'+tr('helpItczNote')+'</p>'
     // ---------- sources ----------
     +'<div class="helpsrc">'+tr('srcTitle')+'<br>'
       +'NOAA CPC · RONI / Niño 3.4 SST<br>'
