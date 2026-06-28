@@ -1146,53 +1146,76 @@ function vWind(speed, dirDeg){ return -speed * Math.cos(dirDeg*Math.PI/180); }
 function uWind(speed, dirDeg){ return -speed * Math.sin(dirDeg*Math.PI/180); }
 
 function fetchMonsoon(){
-  // One multi-point Open-Meteo call for the MSI box (daily mean 925hPa wind),
-  // plus a point over Peninsular Malaysia for the status wind direction.
+  // Pressure-level winds are HOURLY only on Open-Meteo (no daily aggregates),
+  // so we request hourly 925-hPa wind and average to daily MSI ourselves.
   var lats = MSI_LON.map(function(){ return MSI_LAT; }).concat([3.8]);  // +Triang-ish
   var lons = MSI_LON.concat([102.4]);
   var base = 'https://api.open-meteo.com/v1/forecast'
     + '?latitude=' + lats.join(',')
     + '&longitude=' + lons.join(',')
-    + '&daily=wind_speed_925hPa_mean,wind_direction_925hPa_dominant'
+    + '&hourly=wind_speed_925hPa,wind_direction_925hPa'
     + '&wind_speed_unit=ms&timezone=UTC&past_days=7&forecast_days=1';
   return fetch(base, {cache:'no-store'})
     .then(function(r){ if(!r.ok) throw new Error('open-meteo '+r.status); return r.json(); })
     .then(function(j){
-      // j is an array (one object per coordinate) when multiple coords given.
       var arr = Array.isArray(j) ? j : [j];
       if (arr.length < MSI_LON.length+1) throw new Error('monsoon: missing points');
-      var days = arr[0].daily.time;
-      var n = days.length;
-      // MSI per day = average V over the box points
-      var msi = [];
-      for (var d=0; d<n; d++){
-        var sum=0, cnt=0;
-        for (var k=0; k<MSI_LON.length; k++){
-          var sp = arr[k].daily.wind_speed_925hPa_mean[d];
-          var di = arr[k].daily.wind_direction_925hPa_dominant[d];
-          if (sp==null || di==null) continue;
-          sum += vWind(sp, di); cnt++;
-        }
-        msi.push(cnt ? sum/cnt : null);
+      var times = arr[0].hourly.time;          // hourly ISO timestamps
+      // Group hourly indices by calendar day (UTC date string).
+      var dayKeys = [];                         // ordered unique dates
+      var dayIdx = {};                          // date -> [hourly indices]
+      for (var h=0; h<times.length; h++){
+        var dkey = times[h].slice(0,10);
+        if (!dayIdx[dkey]){ dayIdx[dkey]=[]; dayKeys.push(dkey); }
+        dayIdx[dkey].push(h);
       }
-      // surge = MSI < threshold for >= SURGE_DAYS consecutive days (most recent run)
+      // Daily MSI = mean over box points of the daily-mean V-wind.
+      var msiByDay = dayKeys.map(function(dk){
+        var idxs = dayIdx[dk], sum=0, cnt=0;
+        for (var k=0; k<MSI_LON.length; k++){
+          var sp = arr[k].hourly.wind_speed_925hPa;
+          var di = arr[k].hourly.wind_direction_925hPa;
+          // daily-mean V for this point
+          var vsum=0, vcnt=0;
+          for (var t=0;t<idxs.length;t++){
+            var ii=idxs[t];
+            if (sp[ii]==null || di[ii]==null) continue;
+            vsum += vWind(sp[ii], di[ii]); vcnt++;
+          }
+          if (vcnt){ sum += vsum/vcnt; cnt++; }
+        }
+        return cnt ? sum/cnt : null;
+      });
+      // surge = MSI < threshold for >= SURGE_DAYS consecutive days (latest run)
       var run=0, surgeNow=false, latestMSI=null;
-      for (var i=0;i<msi.length;i++){
-        if (msi[i]==null) { run=0; continue; }
-        latestMSI = msi[i];
-        if (msi[i] < SURGE_THRESH){ run++; if (run>=SURGE_DAYS) surgeNow=true; }
+      for (var i=0;i<msiByDay.length;i++){
+        if (msiByDay[i]==null){ run=0; continue; }
+        latestMSI = msiByDay[i];
+        if (msiByDay[i] < SURGE_THRESH){ run++; if (run>=SURGE_DAYS) surgeNow=true; }
         else run=0;
       }
-      // status wind over Malaysia point (last array element), latest day
-      var mp = arr[MSI_LON.length].daily;
-      var li = n-1;
-      var mSpeed = mp.wind_speed_925hPa_mean[li];
-      var mDir = mp.wind_direction_925hPa_dominant[li];
+      // status wind: daily-mean direction over the Malaysia point, latest day
+      var mp = arr[MSI_LON.length].hourly;
+      var lastDay = dayKeys[dayKeys.length-1];
+      var lidx = dayIdx[lastDay];
+      var usum=0, vsum=0, scnt=0, spdSum=0;
+      for (var q=0;q<lidx.length;q++){
+        var jj=lidx[q];
+        var s=mp.wind_speed_925hPa[jj], d=mp.wind_direction_925hPa[jj];
+        if (s==null||d==null) continue;
+        usum += uWind(s,d); vsum += vWind(s,d); spdSum += s; scnt++;
+      }
+      var mDir=null, mSpeed=null;
+      if (scnt){
+        // mean direction from mean U/V (vector mean), met "from" convention
+        mDir = (Math.atan2(-usum/scnt, -vsum/scnt) * 180/Math.PI + 360) % 360;
+        mSpeed = spdSum/scnt;
+      }
       var status = monsoonStatus(new Date(), mDir);
       return {
         msi: latestMSI, surge: surgeNow, surgeRun: run,
         status: status, windDir: mDir, windSpeed: mSpeed,
-        date: days[li], asOf: days[li]
+        date: lastDay, asOf: lastDay
       };
     });
 }
