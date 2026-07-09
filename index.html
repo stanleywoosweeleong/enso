@@ -435,6 +435,16 @@ var T = {
                en:'Labels like MAM, FMA = a group of 3 months, using each month\u2019s first letter. MAM = Mar-Apr-May, FMA = Feb-Mar-Apr. It slides forward one month at a time, so there\u2019s a new value about every month.'},
   helpWhat34:  {zh:'Niño 3.4 = 太平洋赤道上 一块固定海域 的名字（在国际换日线附近，离马来西亚很远）。科学家选它，是因为它的海温最能反映厄尔尼诺／拉尼娜。旁边的数字不是实际水温，而是 比正常高或低几度。RONI 和「每周 Niño 3.4」看的是同一块海，只是 RONI 是三个月平均（慢、稳），每周值是最新一周（快、跳动）。',
                en:'Niño 3.4 = the name of a fixed patch of ocean on the equator in the central Pacific (near the date line, far from Malaysia). Scientists use it because its sea temperature best reflects El Niño / La Niña. The number beside it is NOT the actual water temperature — it\u2019s how many degrees above or below normal. RONI and "Weekly Niño 3.4" read the same patch: RONI is a 3-month average (slow, steady), the weekly is the latest single week (fast, jumpy).'},
+  helpWalker: {zh:'❓ 那么远的海（约 12,500 公里外）怎么会影响我们？靠的是一条横跨太平洋的空气大环流——「沃克环流 (Walker Circulation)」。平常，我们旁边（印尼、马来西亚一带）的海最暖，暖海把空气加热、上升成云致雨——这是我们头顶的「湿引擎」。厄尔尼诺时，这块暖水东移到中太平洋，上升致雨的区域也跟着东移、离开我们；而空气环流是一个闭环：一头上升，另一头就要下沉。上升区东移后，下沉的一头正好压在马来西亚上方——下沉气流是干的，抑制成云，于是我们偏干。所以不是热「传」过来，而是我们和中太平洋是同一个跷跷板的两端：那头升（湿），我们这头就降（干）。拉尼娜则相反，我们偏湿。这种「远隔相关」叫 teleconnection。',
+               en:'❓ How can an ocean that far away (~12,500 km) affect us? Through a giant loop of air spanning the Pacific — the Walker Circulation. Normally the ocean right beside us (around Indonesia and Malaysia) is the warmest; that warm water heats the air, which rises into clouds and rain — our overhead "wet engine." During El Niño, that warm pool shifts east to the central Pacific, and the rising, rainy zone follows it away from us. But the air loop is closed: where it rises on one side, it must sink on the other. With the rising branch shifted east, the sinking branch lands right over Malaysia — and sinking air is dry, suppressing clouds, so we lean drier. It isn\u2019t that heat travels here; it\u2019s that we and the central Pacific are two ends of the same see-saw: their end goes up (wet), our end goes down (dry). La Niña is the reverse — wetter for us. This link across distance is called a teleconnection.'},
+  walkerTitle:{zh:'沃克环流：厄尔尼诺时为何我们偏干', en:'Walker Circulation: why El Niño leaves us drier'},
+  walkerRise: {zh:'上升 · 多雨', en:'rising · rainy'},
+  walkerSink: {zh:'下沉 · 干燥', en:'sinking · dry'},
+  walkerMY:   {zh:'马来西亚', en:'Malaysia'},
+  walkerN34:  {zh:'中太平洋 (Niño 3.4)', en:'Central Pacific (Niño 3.4)'},
+  walkerWarm: {zh:'暖海东移 →', en:'warm water shifts east →'},
+  walkerNormalNote:{zh:'平常（非厄尔尼诺）：暖海在我们这侧，上升致雨在马来西亚上方——我们偏湿。',
+               en:'Normal (non-El Niño): the warm water is on our side and the rising, rainy branch sits over Malaysia — we lean wetter.'},
   helpRoni:    {zh:'RONI = NOAA 官方采用的「相对海洋尼诺指数」，每月更新一次，看的是 整个季节的平均。这是判断大趋势的主指标。',
                en:'RONI = NOAA\u2019s official "Relative Oceanic Niño Index", updated monthly, based on a whole season\u2019s average. This is the main indicator for the big trend.'},
   mapTitle:   {zh:'四个监测海域（由西到东）', en:'The four monitoring boxes (west to east)'},
@@ -1018,7 +1028,49 @@ function ninoMap(){  var t = function(k){ return tr(k); };
   +'</svg>';
 }
 
-// Inline SVG map of the Indian Ocean's two IOD poles, west (off Africa) and
+// Cross-section of the equatorial Pacific showing the Walker Circulation in the
+// EL NIÑO state: Malaysia (left) under the sinking/dry branch, warm water and
+// the rising/rainy branch shifted east to the central Pacific. The closed loop
+// arrows make the "see-saw" visible. Pure SVG, offline.
+function walkerDiagram(){  var t=function(k){return tr(k);};
+  var W=320, H=210;
+  var oceanY=150, skyTop=30;
+  var svg='<svg viewBox="0 0 '+W+' '+H+'" class="ninomap" role="img" aria-label="Walker circulation">';
+  // sky + ocean
+  svg+='<rect x="0" y="0" width="'+W+'" height="'+oceanY+'" fill="#eff6ff" rx="6"/>';
+  svg+='<rect x="0" y="'+oceanY+'" width="'+W+'" height="'+(H-oceanY)+'" fill="#dbeafe"/>';
+  // warm pool shifted east (right side), cooler water west (left)
+  svg+='<rect x="150" y="'+oceanY+'" width="150" height="'+(H-oceanY)+'" fill="#fecaca" opacity="0.7"/>';
+  svg+='<text x="225" y="'+(oceanY+34)+'" font-size="8.5" fill="#b91c1c" text-anchor="middle">'+t('walkerWarm')+'</text>';
+  // circulation loop (rectangle-ish with arrows): rise east, flow west aloft,
+  // sink west (over Malaysia), flow east at surface.
+  var loopTop=skyTop+8, loopL=48, loopR=250;
+  // rising branch (east / right) — up arrow
+  svg+='<line x1="'+loopR+'" y1="'+(oceanY-6)+'" x2="'+loopR+'" y2="'+loopTop+'" stroke="#1d4ed8" stroke-width="3"/>';
+  svg+='<polygon points="'+loopR+','+(loopTop-2)+' '+(loopR-5)+','+(loopTop+8)+' '+(loopR+5)+','+(loopTop+8)+'" fill="#1d4ed8"/>';
+  // top branch (right -> left)
+  svg+='<line x1="'+loopR+'" y1="'+loopTop+'" x2="'+loopL+'" y2="'+loopTop+'" stroke="#93c5fd" stroke-width="3"/>';
+  svg+='<polygon points="'+loopL+','+loopTop+' '+(loopL+9)+','+(loopTop-5)+' '+(loopL+9)+','+(loopTop+5)+'" fill="#93c5fd"/>';
+  // sinking branch (west / left, over Malaysia) — down arrow
+  svg+='<line x1="'+loopL+'" y1="'+loopTop+'" x2="'+loopL+'" y2="'+(oceanY-6)+'" stroke="#a16207" stroke-width="3"/>';
+  svg+='<polygon points="'+loopL+','+(oceanY-4)+' '+(loopL-5)+','+(oceanY-14)+' '+(loopL+5)+','+(oceanY-14)+'" fill="#a16207"/>';
+  // surface return (left -> right)
+  svg+='<line x1="'+loopL+'" y1="'+(oceanY-6)+'" x2="'+loopR+'" y2="'+(oceanY-6)+'" stroke="#cbd5e1" stroke-width="2" stroke-dasharray="4 3"/>';
+  // rain under rising branch (east)
+  for (var i=0;i<4;i++){
+    var rx=loopR-18+i*10;
+    svg+='<line x1="'+rx+'" y1="'+(oceanY-30)+'" x2="'+(rx-3)+'" y2="'+(oceanY-14)+'" stroke="#2563eb" stroke-width="1.5"/>';
+  }
+  svg+='<text x="'+loopR+'" y="'+(loopTop+22)+'" font-size="8.5" font-weight="bold" fill="#1d4ed8" text-anchor="middle">'+t('walkerRise')+'</text>';
+  // dry sun over sinking branch (west, Malaysia)
+  svg+='<circle cx="'+loopL+'" cy="'+(loopTop+26)+'" r="7" fill="#f59e0b"/>';
+  svg+='<text x="'+loopL+'" y="'+(loopTop+48)+'" font-size="8.5" font-weight="bold" fill="#a16207" text-anchor="middle">'+t('walkerSink')+'</text>';
+  // location labels under the ocean
+  svg+='<text x="'+loopL+'" y="'+(H-8)+'" font-size="9" font-weight="bold" fill="#0f766e" text-anchor="middle">★ '+t('walkerMY')+'</text>';
+  svg+='<text x="'+loopR+'" y="'+(H-8)+'" font-size="8.5" fill="#334155" text-anchor="middle">'+t('walkerN34')+'</text>';
+  svg+='</svg>';
+  return svg;
+}
 // east (off Sumatra), with Malaysia marked next to the east pole. Mirrors the
 // style of ninoMap so the two map cards feel consistent. Pure SVG (offline).
 function iodMap(){  var t = function(k){ return tr(k); };
@@ -1540,6 +1592,10 @@ function helpContent(){
     +'<p>🌊 '+tr('helpWhat34')+'</p>'
     +'<div class="maptitle">🗺️ '+tr('mapTitle')+'</div>'
     +'<div class="mapwrap">'+ninoMap()+'</div>'
+    +'<p>'+tr('helpWalker')+'</p>'
+    +'<div class="maptitle">🔄 '+tr('walkerTitle')+'</div>'
+    +'<div class="mapwrap">'+walkerDiagram()+'</div>'
+    +'<p class="helpnote">'+tr('walkerNormalNote')+'</p>'
     +(nowTxt?'<p class="nowline"><b>'+tr('helpNow')+'</b>'+nowTxt+'</p>':'')
     +'<div class="outlook">'
       +'<div class="outlook-h">🔭 '+tr('helpOutlookLabel')+'</div>'
