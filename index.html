@@ -100,6 +100,9 @@
     color:#b91c1c;box-shadow:0 1px 3px rgba(248,113,113,.2)}
   .monofficial{margin:10px 0 0;font-size:11px;line-height:1.5;color:#64748b;
     padding-top:8px;border-top:1px dashed var(--line)}
+  .outsyn{margin:8px 0 0;font-size:11.5px;line-height:1.55;color:#475569;
+    background:#f8fafc;border-radius:8px;padding:8px 10px}
+  .outsyn .outdate{color:#94a3b8;font-size:10.5px}
   /* ---- Info-guide overlay (full-screen, toggled) ---- */
   .help-overlay{position:fixed;inset:0;background:rgba(15,23,42,.55);
     z-index:200;display:none;align-items:flex-end;justify-content:center}
@@ -345,6 +348,7 @@ var T = {
                en:'No active surge right now (MSI {v}). Monitored through the NE monsoon.'},
   monSurgeNA: {zh:'季风涌为东北季风（11–3月）现象，当前季节不适用。',
                en:'Monsoon surges are a Northeast-Monsoon (Nov–Mar) phenomenon — not applicable this season.'},
+  monSurgeShort:{zh:'季风涌活跃 ⚠️', en:'surge active ⚠️'},
   monStale:   {zh:'⚠️ 季风风场数据似乎未更新，暂不显示季风涌判断。',
                en:'⚠️ The monsoon wind data appears out of date; surge reading withheld for now.'},
   // farm advice
@@ -375,7 +379,6 @@ var T = {
   itczMY:     {zh:'马来西亚', en:'Malaysia'},
   itczEq:     {zh:'赤道', en:'Equator'},
   iodUnit:    {zh:'°C · IOD 指数（BOM 每周）', en:'°C · IOD index (BOM weekly)'},
-  iodSlow:    {zh:'', en:''},
   iodAged:    {zh:'⚠️ IOD 数值日期为 {m}，可能已过期，需检查更新。暂不显示农事建议。',
                en:'⚠️ IOD value is dated {m} and may be out of date — needs a check. Farm advice withheld until refreshed.'},
   helpIod:    {zh:'🌏 印度洋偶极 (IOD)：看印度洋东西两侧的海温差。负 IOD = 东侧（靠苏门答腊、离我们近）偏暖 → 本区偏湿、早上多雨；正 IOD = 东侧偏冷 → 本区偏干。门槛：≥ +0.4 为正，≤ −0.4 为负，中间为中性。IOD 常与厄尔尼诺／拉尼娜同向出现：负 IOD + 拉尼娜最湿，正 IOD + 厄尔尼诺最干。但两者并非绑定——IOD 也可能在 ENSO 中性时单独出现，所以值得单独追踪。数据来自澳洲气象局 (BOM) 的每周 IOD 指数。',
@@ -415,6 +418,9 @@ var T = {
   strong:     {zh:'强', en:'Strong'},
   verystrong: {zh:'极强', en:'Very strong'},
   refresh:    {zh:'刷新数据', en:'Refresh data'},
+  shareBtn:   {zh:'分享到 WhatsApp', en:'Share to WhatsApp'},
+  outlookLbl: {zh:'NOAA 官方展望', en:'NOAA outlook'},
+  outlookNote:{zh:'（NOAA 原文，每月更新）', en:'(NOAA original text, monthly)'},
   // --- plain-language helpers ---
   helpToggle: {zh:'这些数字是什么意思？', en:'What do these numbers mean?'},
   helpClose:  {zh:'收起说明', en:'Close explanation'},
@@ -519,31 +525,6 @@ function parseSeasonal(text, anomCol){
   }
   return out;
 }
-// dmi.had.long.data (NOAA PSL "standard" format): a header line "STARTYR ENDYR",
-// then one row per year: "YEAR  jan feb mar ... dec" (12 monthly DMI values).
-// Missing/future months are a flag like -999.0 (or -9999). Trailing lines after
-// the data are footer/metadata. Returns valid months chronologically sorted, so
-// the last element is the most recent real value.
-function parseDMI(text){
-  var lines = text.trim().split(/\r?\n/);
-  var out = [];
-  var MISSING = -90; // any value <= this is treated as the missing flag (-999, -9999)
-  for (var i=0;i<lines.length;i++){
-    var p = lines[i].trim().split(/\s+/);
-    // A data row starts with a 4-digit year and has up to 12 monthly columns.
-    if (!/^\d{4}$/.test(p[0])) continue;
-    var year = parseInt(p[0],10);
-    if (year < 1800 || year > 2100) continue; // skip header "1870 2026" line etc.
-    for (var m=1; m<=12 && m<p.length; m++){
-      var v = parseFloat(p[m]);
-      if (isNaN(v) || v <= MISSING) continue; // skip missing months
-      out.push({ year:year, month:m, val:v });
-    }
-  }
-  // chronological order
-  out.sort(function(a,b){ return (a.year-b.year) || (a.month-b.month); });
-  return out;
-}
 // NOAA ROMI (Real-time OLR MJO Index): columns are
 //   year month day hour pc1 pc2 amplitude
 // No header, no phase column. To match the standard WH04/RMM phase convention
@@ -555,6 +536,7 @@ function parseMJO(text){
   if (!text) return null;
   var lines = text.trim().split(/\r?\n/);
   var last = null;
+  var track = [];                                // last ~40 valid days for the trail
   for (var i=0;i<lines.length;i++){
     var p = lines[i].trim().split(/\s+/);
     if (p.length < 7) continue;
@@ -567,7 +549,10 @@ function parseMJO(text){
     var rmm1 = pc2, rmm2 = -pc1;                 // ROMI -> RMM convention
     var phase = rmmPhaseOf(rmm1, rmm2);
     last = { year:year, month:mon, day:day, rmm1:rmm1, rmm2:rmm2, phase:phase, amp:amp };
+    track.push({ rmm1:rmm1, rmm2:rmm2, amp:amp });
+    if (track.length > 40) track.shift();        // keep the most recent ~40 days
   }
+  if (last) last.track = track;                  // history for the wheel's trail
   return last; // latest valid row (file is chronological)
 }
 // Standard WH04 RMM phase from (RMM1,RMM2): the vector angle split into 8 sectors.
@@ -1161,6 +1146,23 @@ function mjoWheel(mjo){  var t = function(k){ return tr(k); };
     var rPlot = rIn + (mjo.amp - 1) * ((R - rIn) / 2); // amp1->rIn, amp3->R
     if (rPlot < 4) rPlot = 4;                           // keep off exact center
     if (rPlot > R) rPlot = R;
+    // 40-day trail: the MJO's recent path through phase space. Drawn faint so
+    // the current point stays dominant; shows direction of travel (the MJO
+    // circles counterclockwise when propagating eastward).
+    if (mjo.track && mjo.track.length > 1){
+      var pts = [];
+      for (var ti=0; ti<mjo.track.length; ti++){
+        var tp = mjo.track[ti];
+        var tr_ = rIn + (tp.amp - 1) * ((R - rIn) / 2);
+        if (tr_ < 4) tr_ = 4; if (tr_ > R) tr_ = R;
+        var ta = Math.atan2(tp.rmm2, tp.rmm1);
+        pts.push((cx + tr_*Math.cos(ta)).toFixed(1)+','+(cy - tr_*Math.sin(ta)).toFixed(1));
+      }
+      svg+='<polyline points="'+pts.join(' ')+'" fill="none" stroke="#0f766e" stroke-width="1.3" opacity="0.3" stroke-linejoin="round"/>';
+      // small hollow marker at the trail start (oldest point) for orientation
+      var p0 = pts[0].split(',');
+      svg+='<circle cx="'+p0[0]+'" cy="'+p0[1]+'" r="2.5" fill="none" stroke="#0f766e" stroke-width="1" opacity="0.4"/>';
+    }
     // direction from the RMM vector angle
     var ang = Math.atan2(mjo.rmm2, mjo.rmm1); // radians, CCW from +x
     var px = cx + rPlot*Math.cos(ang), py = cy - rPlot*Math.sin(ang);
@@ -1326,18 +1328,16 @@ function fetchMonsoon(){
       };
     });
 }
-// Determine monsoon phase from calendar, refined by 925hPa wind direction.
-// dir is met "from" degrees over Peninsular Malaysia (may be null).
+// Determine monsoon phase from the calendar. NOTE: purely calendar-based —
+// NE ~Nov-Mar, SW ~Jun-Sep, inter-monsoon between (Apr-May, Oct). The 925-hPa
+// wind direction is fetched and returned alongside (mon.windDir) for reference
+// but is NOT used to override the season label, to avoid the label flapping
+// day-to-day on transient winds. dir param kept for future refinement.
 function monsoonStatus(now, dir){
   var m = now.getUTCMonth()+1; // 1-12
-  // calendar baseline
-  var cal;
-  if (m===11||m===12||m===1||m===2||m===3) cal='NE';
-  else if (m>=6 && m<=9) cal='SW';
-  else cal='INTER'; // Apr-May, Oct transitions
-  // wind refinement: NE monsoon = flow from NE (dir ~0-90, i.e. N to E);
-  // SW monsoon = flow from SW (dir ~180-270). Only used to confirm/soften.
-  return cal;
+  if (m===11||m===12||m===1||m===2||m===3) return 'NE';
+  if (m>=6 && m<=9) return 'SW';
+  return 'INTER'; // Apr-May, Oct transitions
 }
 
 function load(){
@@ -1351,7 +1351,8 @@ function load(){
   // Monsoon status + surge index: computed from Open-Meteo 925-hPa winds,
   // fetched directly (not via the Worker). Also a bonus — null on failure.
   var monFeed = fetchMonsoon().catch(function(){ return null; });
-  Promise.all([ getFeed('roni'), getFeed('weekly'), iodFeed, mjoFeed, monFeed ])
+  var outFeed = getFeed('outlook').catch(function(){ return null; });
+  Promise.all([ getFeed('roni'), getFeed('weekly'), iodFeed, mjoFeed, monFeed, outFeed ])
     .then(function(res){
       var roni = parseSeasonal(res[0], 2);   // RONI anom in col 2
       var weekly = parseWeekly(res[1]);
@@ -1360,14 +1361,15 @@ function load(){
       var iod = parseIod(res[2]);
       var mjo = parseMJO(res[3]);
       var mon = res[4]; // already a computed object (or null)
+      var out = parseOutlook(res[5]);
       // Save the fresh feeds so the app can show them next time it's offline.
       try {
         localStorage.setItem('enso-cache', JSON.stringify({
           roni: res[0], weekly: res[1], iod: res[2] || '', mjo: res[3] || '',
-          mon: mon || null, at: Date.now()
+          mon: mon || null, out: res[5] || '', at: Date.now()
         }));
       } catch(e){ /* storage full or blocked — ignore */ }
-      render(roni, weekly, null, iod, mjo, mon);
+      render(roni, weekly, null, iod, mjo, mon, out);
     })
     .catch(function(e){
       // Fetch failed (likely offline). Fall back to the last-saved data.
@@ -1378,7 +1380,8 @@ function load(){
         var weekly = parseWeekly(raw.weekly);
         var iod = parseIod(raw.iod);
         var mjo = parseMJO(raw.mjo);
-        if (roni.length && weekly.length) { render(roni, weekly, raw.at, iod, mjo, raw.mon||null); return; }
+        var out = parseOutlook(raw.out);
+        if (roni.length && weekly.length) { render(roni, weekly, raw.at, iod, mjo, raw.mon||null, out); return; }
       }
       renderError(e); // no cache to fall back on
     });
@@ -1395,9 +1398,24 @@ function parseIod(text){
     return { ok:false, reason:(o && o.reason) || 'no data' };
   } catch(e){ return { ok:false, reason:'bad json' }; }
 }
+// Parse the Worker's CPC outlook JSON {ok,status,synopsis,issued}. Returns
+// null on any problem or if the issue date is >45 days old (monthly product) —
+// the outlook row is a bonus and is simply omitted rather than shown stale.
+function parseOutlook(text){
+  if (!text) return null;
+  try {
+    var o = (typeof text === 'string') ? JSON.parse(text) : text;
+    if (!o || o.ok !== true || !o.status) return null;
+    if (o.issued){
+      var ts = bomDateTs(o.issued); // same "9 July 2026" format
+      if (ts > 0 && (Date.now() - ts) > 45*24*3600*1000) return null; // stale
+    }
+    return { status:o.status, synopsis:o.synopsis || null, issued:o.issued || null };
+  } catch(e){ return null; }
+}
 
 /* ===================== RENDER ===================== */
-function render(roni, weekly, cachedAt, iod, mjo, mon){
+function render(roni, weekly, cachedAt, iod, mjo, mon, out){
   var latest = roni[roni.length-1];
   var prev   = roni[roni.length-2] || latest;
   var phase  = phaseOf(latest.anom);
@@ -1437,9 +1455,10 @@ function render(roni, weekly, cachedAt, iod, mjo, mon){
   // Stash the inputs so the info-guide overlay can regenerate this live text
   // (and in the current language) whenever it is opened.
   HELP_STATE = { phase:phase, strength:strength, t3:t3,
-                 roni:latest.anom, wk:wkLatest.nino34, iod:iod, mjo:mjo, mon:mon };
+                 roni:latest.anom, wk:wkLatest.nino34, iod:iod, mjo:mjo, mon:mon, out:out };
   // Always-visible plain verdict for the hero (the 2-second takeaway).
   var verdict = plainVerdict(phase, phaseOf(wkLatest.nino34));
+  HELP_STATE.verdictText = verdict.text; // reused by the WhatsApp share
 
   // spark: last 24 seasons
   var hist = roni.slice(-24);
@@ -1476,6 +1495,9 @@ function render(roni, weekly, cachedAt, iod, mjo, mon){
     +'<div class="row"><span class="k">'+tr('latestSeason')+'<br><span class="k-sub">'+seasonPlain(latest.seas)+'</span></span><span class="v '+vClass+'">'+latest.seas+' '+latest.yr+' · '+fmt(latest.anom)+'</span></div>'
     +'<div class="row"><span class="k">'+tr('prevSeason')+'<br><span class="k-sub">'+seasonPlain(prev.seas)+'</span></span><span class="v">'+prev.seas+' '+prev.yr+' · '+fmt(prev.anom)+'</span></div>'
     +'<div class="row"><span class="k">'+tr('trend3')+'</span><span class="v">'+tr(t3)+'</span></div>'
+    +(out ? '<div class="row"><span class="k">'+tr('outlookLbl')+'</span><span class="v">'+out.status+'</span></div>'
+          +(out.synopsis ? '<div class="outsyn">'+out.synopsis+(out.issued?' <span class="outdate">('+out.issued+')</span>':'')+'</div>' : '')
+        : '')
   +'</div>'
 
   +'<div class="card'+(wkStale?' stale':'')+'">'
@@ -1523,6 +1545,7 @@ function render(roni, weekly, cachedAt, iod, mjo, mon){
     +'<p style="font-size:11px;color:#92400e;margin-top:10px">'+tr('disclaimer')+'</p>'
   +'</div>'
 
+  +'<button class="btn ghost" onclick="shareWA()">📤 '+tr('shareBtn')+'</button>'
   +'<button class="btn ghost" onclick="load()">'+tr('refresh')+'</button>';
 
   document.getElementById('app').innerHTML = html;
@@ -1543,6 +1566,61 @@ function applyLang(){
   document.getElementById('t-title').textContent = tr('title');
   document.getElementById('t-sub').textContent = tr('sub');
 }
+// Compose a bilingual-aware WhatsApp snapshot of all five signals from
+// HELP_STATE (set by render). Signals that are unavailable or stale are simply
+// omitted — the share never includes data the cards themselves wouldn't show.
+function buildShareText(){
+  var s = HELP_STATE;
+  if (!s) return '';
+  var zh = (LANG==='zh');
+  var L = [];
+  var d = new Date();
+  var dateTxt = d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+  L.push((zh?'🌊 气候信号快报':'🌊 Climate signals snapshot')+' · '+dateTxt);
+  // ENSO
+  var phLbl = s.phase==='warm'?tr('elnino'):s.phase==='cool'?tr('lanina'):tr('neutral');
+  L.push('ENSO: '+phLbl+' (RONI '+fmt(s.roni)+')');
+  if (typeof s.wk==='number') L.push((zh?'每周 Niño3.4: ':'Weekly Niño3.4: ')+fmt(s.wk));
+  // IOD (only when good + fresh, same rule as the card)
+  if (s.iod && s.iod.ok && typeof s.iod.value==='number'){
+    var ip = iodPhaseOf(s.iod.value);
+    var ipLbl = ip==='pos'?tr('iodPosCond'):ip==='neg'?tr('iodNegCond'):tr('iodNeuCond');
+    var asOfTs = s.iod.asOf ? bomDateTs(s.iod.asOf) : 0;
+    if (!(asOfTs>0 && (Date.now()-asOfTs)>35*24*3600*1000)){
+      L.push('IOD: '+ipLbl+' ('+fmt(s.iod.value)+')');
+    }
+  }
+  // MJO (skip if stale, mirror the card's guard)
+  if (s.mjo){
+    var mts = new Date(s.mjo.year, s.mjo.month-1, s.mjo.day).getTime();
+    if ((Date.now()-mts)/(24*3600*1000) <= 10){
+      if (s.mjo.amp < MJO_ACTIVE){
+        L.push('MJO: '+tr('mjoWeakBadge')+' ('+(zh?'位相':'phase')+' '+s.mjo.phase+' · '+s.mjo.amp.toFixed(2)+')');
+      } else {
+        var me = mjoEffect(s.mjo.phase);
+        var meLbl = me==='wet'?tr('mjoWet'):me==='dry'?tr('mjoDry'):tr('mjoTrans');
+        L.push('MJO: '+(zh?'位相':'phase')+' '+s.mjo.phase+' · '+s.mjo.amp.toFixed(2)+' — '+meLbl);
+      }
+    }
+  }
+  // Monsoon
+  if (s.mon){
+    var stLbl = s.mon.status==='NE'?tr('monNE'):s.mon.status==='SW'?tr('monSW'):tr('monInter');
+    var surgeTxt = (s.mon.status==='NE' && s.mon.surge) ? ' — '+tr('monSurgeShort') : '';
+    L.push((zh?'季风: ':'Monsoon: ')+stLbl+surgeTxt);
+  }
+  // the 2-second takeaway
+  if (s.verdictText) L.push((zh?'👉 ':'👉 ')+s.verdictText);
+  L.push('');
+  L.push('https://stanleywoosweeleong.github.io/enso/');
+  return L.join('\n');
+}
+function shareWA(){
+  var txt = buildShareText();
+  if (!txt) return;
+  window.open('https://wa.me/?text=' + encodeURIComponent(txt), '_blank');
+}
+
 function toggleLang(){
   // One tap: advance to the next language in the cycle and re-render.
   var i = LANG_CYCLE.indexOf(LANG);
@@ -1600,6 +1678,7 @@ function helpContent(){
     +'<div class="outlook">'
       +'<div class="outlook-h">🔭 '+tr('helpOutlookLabel')+'</div>'
       +'<p>'+tr('helpOutlookTxt')+'</p>'
+      +(s && s.out ? '<p><b>'+s.out.status+'</b>'+(s.out.synopsis?' — '+s.out.synopsis:'')+' <span style="color:#94a3b8;font-size:11px">'+tr('outlookNote')+'</span></p>' : '')
       +'<a href="https://www.cpc.ncep.noaa.gov/products/analysis_monitoring/enso_advisory/ensodisc.shtml" target="_blank" rel="noopener">'+tr('helpOutlookCheck')+'</a>'
     +'</div>'
     // ---------- IOD section (parallel structure to ENSO above) ----------
@@ -1631,7 +1710,7 @@ function helpContent(){
     +'<p>'+tr('helpMon')+'</p>'
     +(s && s.mon ? '<p class="nowline"><b>'+tr('mjoNowLabel')+'</b>'
         +(s.mon.status==='NE'?tr('monNE'):s.mon.status==='SW'?tr('monSW'):tr('monInter'))
-        +(s.mon.status==='NE' && typeof s.mon.msi==='number' ? ' · MSI '+s.mon.msi.toFixed(1)+' m/s'+(s.mon.surge?' — '+tr('monNE'):'') : '')
+        +(s.mon.status==='NE' && typeof s.mon.msi==='number' ? ' · MSI '+s.mon.msi.toFixed(1)+' m/s'+(s.mon.surge?' — '+tr('monSurgeShort'):'') : '')
         +'</p>' : '')
     +'<div class="outlook">'
       +'<div class="outlook-h">🔭 '+tr('monOutlookLabel')+'</div>'
