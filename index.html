@@ -1413,6 +1413,25 @@ function parseOutlook(text){
     return { status:o.status, synopsis:o.synopsis || null, issued:o.issued || null };
   } catch(e){ return null; }
 }
+// Translate the CPC Alert System Status for Chinese mode. This is safe to map
+// because the status is a small FIXED official vocabulary (unlike the synopsis,
+// which stays in NOAA's original English). Any unrecognised status falls back
+// to the English original rather than guessing.
+var OUTLOOK_STATUS_ZH = {
+  'not active':              '不活跃（无预警）',
+  'el nino watch':           '厄尔尼诺观察（酝酿中）',
+  'la nina watch':           '拉尼娜观察（酝酿中）',
+  'el nino advisory':        '厄尔尼诺警报（已形成）',
+  'la nina advisory':        '拉尼娜警报（已形成）',
+  'final el nino advisory':  '厄尔尼诺最终警报（消退中）',
+  'final la nina advisory':  '拉尼娜最终警报（消退中）'
+};
+function outlookStatusLabel(status){
+  if (LANG !== 'zh' || !status) return status;
+  // normalise: lowercase, strip the ñ accent so both "Niño" and "Nino" match
+  var key = status.toLowerCase().replace(/\u00f1/g, 'n').replace(/\s+/g, ' ').trim();
+  return OUTLOOK_STATUS_ZH[key] || status; // unknown -> English original
+}
 
 /* ===================== RENDER ===================== */
 function render(roni, weekly, cachedAt, iod, mjo, mon, out){
@@ -1495,7 +1514,7 @@ function render(roni, weekly, cachedAt, iod, mjo, mon, out){
     +'<div class="row"><span class="k">'+tr('latestSeason')+'<br><span class="k-sub">'+seasonPlain(latest.seas)+'</span></span><span class="v '+vClass+'">'+latest.seas+' '+latest.yr+' · '+fmt(latest.anom)+'</span></div>'
     +'<div class="row"><span class="k">'+tr('prevSeason')+'<br><span class="k-sub">'+seasonPlain(prev.seas)+'</span></span><span class="v">'+prev.seas+' '+prev.yr+' · '+fmt(prev.anom)+'</span></div>'
     +'<div class="row"><span class="k">'+tr('trend3')+'</span><span class="v">'+tr(t3)+'</span></div>'
-    +(out ? '<div class="row"><span class="k">'+tr('outlookLbl')+'</span><span class="v">'+out.status+'</span></div>'
+    +(out ? '<div class="row"><span class="k">'+tr('outlookLbl')+'</span><span class="v">'+outlookStatusLabel(out.status)+'</span></div>'
           +(out.synopsis ? '<div class="outsyn">'+out.synopsis+(out.issued?' <span class="outdate">('+out.issued+')</span>':'')+'</div>' : '')
         : '')
   +'</div>'
@@ -1545,8 +1564,8 @@ function render(roni, weekly, cachedAt, iod, mjo, mon, out){
     +'<p style="font-size:11px;color:#92400e;margin-top:10px">'+tr('disclaimer')+'</p>'
   +'</div>'
 
-  +'<button class="btn ghost" onclick="shareWA()">📤 '+tr('shareBtn')+'</button>'
-  +'<button class="btn ghost" onclick="load()">'+tr('refresh')+'</button>';
+  +'<button class="btn ghost" onclick="load()">'+tr('refresh')+'</button>'
+  +'<button class="btn ghost" onclick="shareWA()">📤 '+tr('shareBtn')+'</button>';
 
   document.getElementById('app').innerHTML = html;
 }
@@ -1611,8 +1630,6 @@ function buildShareText(){
   }
   // the 2-second takeaway
   if (s.verdictText) L.push((zh?'👉 ':'👉 ')+s.verdictText);
-  L.push('');
-  L.push('https://stanleywoosweeleong.github.io/enso/');
   return L.join('\n');
 }
 function shareWA(){
@@ -1678,7 +1695,7 @@ function helpContent(){
     +'<div class="outlook">'
       +'<div class="outlook-h">🔭 '+tr('helpOutlookLabel')+'</div>'
       +'<p>'+tr('helpOutlookTxt')+'</p>'
-      +(s && s.out ? '<p><b>'+s.out.status+'</b>'+(s.out.synopsis?' — '+s.out.synopsis:'')+' <span style="color:#94a3b8;font-size:11px">'+tr('outlookNote')+'</span></p>' : '')
+      +(s && s.out ? '<p><b>'+outlookStatusLabel(s.out.status)+'</b>'+(LANG==='zh' && outlookStatusLabel(s.out.status)!==s.out.status ? ' ('+s.out.status+')' : '')+(s.out.synopsis?' — '+s.out.synopsis:'')+' <span style="color:#94a3b8;font-size:11px">'+tr('outlookNote')+'</span></p>' : '')
       +'<a href="https://www.cpc.ncep.noaa.gov/products/analysis_monitoring/enso_advisory/ensodisc.shtml" target="_blank" rel="noopener">'+tr('helpOutlookCheck')+'</a>'
     +'</div>'
     // ---------- IOD section (parallel structure to ENSO above) ----------
