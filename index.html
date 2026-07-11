@@ -103,6 +103,9 @@
   .outsyn{margin:8px 0 0;font-size:11.5px;line-height:1.55;color:#475569;
     background:#f8fafc;border-radius:8px;padding:8px 10px}
   .outsyn .outdate{color:#94a3b8;font-size:10.5px}
+  .mjowheelhome{max-width:240px;margin:10px auto 2px;background:#f8fafc;
+    border:1px solid var(--line);border-radius:10px;padding:6px}
+  .mjowheelhome svg{width:100%;height:auto;display:block}
   /* ---- Info-guide overlay (full-screen, toggled) ---- */
   .help-overlay{position:fixed;inset:0;background:rgba(15,23,42,.55);
     z-index:200;display:none;align-items:flex-end;justify-content:center}
@@ -421,6 +424,7 @@ var T = {
   shareBtn:   {zh:'分享到 WhatsApp', en:'Share to WhatsApp'},
   outlookLbl: {zh:'NOAA 官方展望', en:'NOAA outlook'},
   outlookNote:{zh:'（NOAA 原文，每月更新）', en:'(NOAA original text, monthly)'},
+  outlookMT:  {zh:'AI 翻译，以英文原文为准（原文见 ⓘ 说明）', en:'AI translation; the English original prevails (see the ⓘ guide)'},
   // --- plain-language helpers ---
   helpToggle: {zh:'这些数字是什么意思？', en:'What do these numbers mean?'},
   helpClose:  {zh:'收起说明', en:'Close explanation'},
@@ -888,7 +892,10 @@ function mjoCard(mjo){
       +'<span class="phase-badge '+badgeCls+'">'+badgeLbl+'</span>'
       +'<div class="iodnum" style="color:'+col+'">'+mjo.phase+'<span style="font-size:18px;font-weight:600;color:var(--muted)"> · '+mjo.amp.toFixed(2)+'</span></div>'
       +'<div class="anomunit">'+tr('mjoUnit')+'</div>'
-    +'</div>';
+    +'</div>'
+    // The phase wheel (with the 40-day trail) on the home screen, so the phase
+    // and its direction of travel are visible without opening the guide.
+    +'<div class="mjowheelhome">'+mjoWheel(mjo)+'</div>';
   if (!active){
     html += '<div class="iodage">'+tr('mjoWeakNote')+'</div>';
   } else if (meaning){
@@ -1410,7 +1417,8 @@ function parseOutlook(text){
       var ts = bomDateTs(o.issued); // same "9 July 2026" format
       if (ts > 0 && (Date.now() - ts) > 45*24*3600*1000) return null; // stale
     }
-    return { status:o.status, synopsis:o.synopsis || null, issued:o.issued || null };
+    return { status:o.status, synopsis:o.synopsis || null,
+             synopsisZh:o.synopsisZh || null, issued:o.issued || null };
   } catch(e){ return null; }
 }
 // Translate the CPC Alert System Status for Chinese mode. This is safe to map
@@ -1515,7 +1523,11 @@ function render(roni, weekly, cachedAt, iod, mjo, mon, out){
     +'<div class="row"><span class="k">'+tr('prevSeason')+'<br><span class="k-sub">'+seasonPlain(prev.seas)+'</span></span><span class="v">'+prev.seas+' '+prev.yr+' · '+fmt(prev.anom)+'</span></div>'
     +'<div class="row"><span class="k">'+tr('trend3')+'</span><span class="v">'+tr(t3)+'</span></div>'
     +(out ? '<div class="row"><span class="k">'+tr('outlookLbl')+'</span><span class="v">'+outlookStatusLabel(out.status)+'</span></div>'
-          +(out.synopsis ? '<div class="outsyn">'+out.synopsis+(out.issued?' <span class="outdate">('+out.issued+')</span>':'')+'</div>' : '')
+          +(out.synopsis ? '<div class="outsyn">'
+              +((LANG==='zh' && out.synopsisZh) ? out.synopsisZh : out.synopsis)
+              +(out.issued?' <span class="outdate">('+out.issued+')</span>':'')
+              +((LANG==='zh' && out.synopsisZh) ? '<div class="outdate" style="margin-top:4px">'+tr('outlookMT')+'</div>' : '')
+            +'</div>' : '')
         : '')
   +'</div>'
 
