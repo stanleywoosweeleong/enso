@@ -1896,71 +1896,25 @@ setTimeout(function(){var b=document.getElementById('boot');if(b)b.style.display
    ?feed=outlook  -> JSON {ok,status,synopsis,synopsisZh,issued}  (CPC discussion scrape)
    ?feed=oni      -> oni.ascii.txt   (available, not currently fetched by the app)
 
- ⚠️ THE REFERENCE COPY BELOW IS INCOMPLETE — it implements only roni/oni/weekly.
- The deployed Worker has since gained iod, mjo and outlook (the two JSON scrapes
- plus the ROMI passthrough). Redeploying straight from this block would silently
- kill the IOD, MJO and outlook cards. Export the live Worker source before you
- touch it, and paste the real thing back here when you do.
---------------------------------------------------------------------------------
+ ⚠️ NO CODE COPY LIVES HERE ANY MORE.
+ It used to hold a 3-feed version (roni/oni/weekly) that had fallen ~3 feeds
+ behind the deployed Worker. Redeploying from it would have silently killed the
+ IOD, MJO and outlook cards while ENSO kept working — the worst kind of failure,
+ because nothing looks broken. A copy that can drift is worse than no copy.
 
-const FEEDS = {
-  roni:   'https://www.cpc.ncep.noaa.gov/data/indices/RONI.ascii.txt',
-  oni:    'https://www.cpc.ncep.noaa.gov/data/indices/oni.ascii.txt',
-  weekly: 'https://www.cpc.ncep.noaa.gov/data/indices/wksst9120.for',
-};
+ THE SOURCE OF TRUTH IS  enso-proxy.js  IN THIS REPO.
+ Edit there, paste into the Cloudflare dashboard, Deploy. Never the other way
+ round: if you edit in the dashboard, export it back into enso-proxy.js in the
+ same sitting, or the two will diverge again.
 
-const CORS = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET, OPTIONS',
-  'Access-Control-Allow-Headers': '*',
-};
-
-export default {
-  async fetch(request) {
-    if (request.method === 'OPTIONS') {
-      return new Response(null, { headers: CORS });
-    }
-
-    const url = new URL(request.url);
-    const feed = url.searchParams.get('feed');
-
-    if (!feed || !FEEDS[feed]) {
-      return new Response(
-        JSON.stringify({ error: 'unknown feed', valid: Object.keys(FEEDS) }),
-        { status: 400, headers: { ...CORS, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    try {
-      const upstream = await fetch(FEEDS[feed], {
-        cf: { cacheTtl: 1800, cacheEverything: true }, // 30 min edge cache
-        headers: { 'User-Agent': 'ENSO-Monitor/1.0 (orchard weather)' },
-      });
-
-      if (!upstream.ok) {
-        return new Response(
-          JSON.stringify({ error: 'upstream ' + upstream.status }),
-          { status: 502, headers: { ...CORS, 'Content-Type': 'application/json' } }
-        );
-      }
-
-      const body = await upstream.text();
-      return new Response(body, {
-        headers: {
-          ...CORS,
-          'Content-Type': 'text/plain; charset=utf-8',
-          'Cache-Control': 'public, max-age=1800',
-          'X-ENSO-Feed': feed,
-        },
-      });
-    } catch (err) {
-      return new Response(
-        JSON.stringify({ error: 'fetch failed', detail: String(err) }),
-        { status: 500, headers: { ...CORS, 'Content-Type': 'application/json' } }
-      );
-    }
-  },
-};
+ QUICK HEALTH CHECK after any deploy — all five must answer:
+   <worker-url>/?feed=weekly   -> NOAA text, newest week near today
+   <worker-url>/?feed=roni     -> NOAA text
+   <worker-url>/?feed=mjo      -> PSL ROMI text
+   <worker-url>/?feed=iod      -> {"ok":true,"value":...,"asOf":"..."}
+   <worker-url>/?feed=outlook  -> {"ok":true,"status":"...","issued":"..."}
+ Response header X-ENSO-Cache tells you whether a scraped feed came from the
+ edge cache (hit) or was freshly scraped (miss).
 
 ================================================================================
 -->
