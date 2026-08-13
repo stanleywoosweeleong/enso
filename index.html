@@ -491,8 +491,12 @@ var T = {
                 en:'Trend chart = how each season changed over the last two years. Red = El Niño, blue = La Niña, grey = Neutral.'},
   helpNow:     {zh:'现在的情况（实时数据）：', en:'Right now (live data): '},
   helpOutlookLabel: {zh:'NOAA 官方展望', en:'NOAA official outlook'},
-  helpOutlookTxt:   {zh:'NOAA 已发布「厄尔尼诺预警」，预计厄尔尼诺将从今年下半年增强至 2026/27 年冬季。（此为 NOAA 每月人工发布的预报，非本 App 实时数据计算，约每月更新一次。）',
-                     en:'NOAA has issued an El Niño Advisory — El Niño is expected to strengthen from the second half of this year into the 2026/27 winter. (This is NOAA\u2019s monthly human-issued forecast, not computed from this app\u2019s live data; updated about monthly.)'},
+  // NOTE: this paragraph must never state what the current outlook IS. That
+  // sentence would freeze on the day it was typed while the live line below it
+  // keeps updating — the two would eventually contradict each other in the same
+  // panel. Describe the product; let the fetched values speak for the content.
+  helpOutlookTxt:   {zh:'NOAA 每月人工发布一次官方展望：预警／守望状态，加一段简要研判。它不是本 App 由实时数据算出来的。下面一行是最近一次抓取到的官方状态与发布日期；若已超过 45 天未更新，则宁可不显示，也不给你过期的结论。',
+                     en:'NOAA issues an official outlook about once a month — an advisory/watch status plus a short synopsis. It is human-issued, not computed from this app\u2019s live data. The line below is the most recent one fetched, with its issue date; if it is more than 45 days old nothing is shown rather than a stale conclusion.'},
   helpOutlookCheck: {zh:'查看 NOAA 最新展望 ↗', en:'Check NOAA\u2019s latest outlook ↗'},
   iodMapTitle:{zh:'印度洋的两端（西 vs 东）', en:'The two ends of the Indian Ocean (west vs east)'},
   iodMapWest: {zh:'西极', en:'West pole'},
@@ -1755,7 +1759,7 @@ function helpContent(){
     +'<div class="outlook">'
       +'<div class="outlook-h">🔭 '+tr('helpOutlookLabel')+'</div>'
       +'<p>'+tr('helpOutlookTxt')+'</p>'
-      +(s && s.out ? '<p><b>'+outlookStatusLabel(s.out.status)+'</b>'+(LANG==='zh' && outlookStatusLabel(s.out.status)!==s.out.status ? ' ('+s.out.status+')' : '')+(s.out.synopsis?' — '+s.out.synopsis:'')+' <span style="color:#94a3b8;font-size:11px">'+tr('outlookNote')+'</span></p>' : '')
+      +(s && s.out ? '<p><b>'+outlookStatusLabel(s.out.status)+'</b>'+(LANG==='zh' && outlookStatusLabel(s.out.status)!==s.out.status ? ' ('+s.out.status+')' : '')+(s.out.synopsis?' — '+s.out.synopsis:'')+(s.out.issued?' <span class="outdate">('+s.out.issued+')</span>':'')+' <span style="color:#94a3b8;font-size:11px">'+tr('outlookNote')+'</span></p>' : '')
       +'<a href="https://www.cpc.ncep.noaa.gov/products/analysis_monitoring/enso_advisory/ensodisc.shtml" target="_blank" rel="noopener">'+tr('helpOutlookCheck')+'</a>'
     +'</div>'
     // ---------- IOD section (parallel structure to ENSO above) ----------
@@ -1884,10 +1888,19 @@ setTimeout(function(){var b=document.getElementById('boot');if(b)b.style.display
    3. Edit code -> paste the script below (replace all) -> Deploy
    4. Test: open  <worker-url>/?feed=weekly  -> should show NOAA text
 
- ENDPOINTS (append ?feed=<name>):
-   ?feed=roni    -> RONI.ascii.txt   (official relative ONI, monthly/seasonal)
-   ?feed=oni     -> oni.ascii.txt    (traditional ONI, monthly)
-   ?feed=weekly  -> wksst9120.for    (weekly Nino-region SST anomalies)
+ ENDPOINTS THE APP ACTUALLY CALLS (append ?feed=<name>):
+   ?feed=roni     -> RONI.ascii.txt  (official relative ONI, monthly/seasonal)
+   ?feed=weekly   -> wksst9120.for   (weekly Nino-region SST anomalies)
+   ?feed=iod      -> JSON {ok,value,asOf}                  (BOM page scrape)
+   ?feed=mjo      -> NOAA PSL ROMI daily text
+   ?feed=outlook  -> JSON {ok,status,synopsis,synopsisZh,issued}  (CPC discussion scrape)
+   ?feed=oni      -> oni.ascii.txt   (available, not currently fetched by the app)
+
+ ⚠️ THE REFERENCE COPY BELOW IS INCOMPLETE — it implements only roni/oni/weekly.
+ The deployed Worker has since gained iod, mjo and outlook (the two JSON scrapes
+ plus the ROMI passthrough). Redeploying straight from this block would silently
+ kill the IOD, MJO and outlook cards. Export the live Worker source before you
+ touch it, and paste the real thing back here when you do.
 --------------------------------------------------------------------------------
 
 const FEEDS = {
