@@ -9,7 +9,7 @@
  * Bump CACHE_VERSION whenever index.html or this file changes, so users get
  * the new version instead of a stale cached one.
  */
-const CACHE_VERSION = 'enso-v1.15.3';
+const CACHE_VERSION = "enso-v1.15.4";
 const SHELL = [
   './',
   './index.html',

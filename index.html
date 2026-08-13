@@ -328,6 +328,17 @@ var T = {
   mjoRegMaritime:{zh:'海洋大陆（我们这里）', en:'Maritime Continent (incl. Malaysia)'},
   mjoRegWPac:   {zh:'西太平洋', en:'Western Pacific'},
   mjoRegPac:    {zh:'太平洋', en:'Pacific'},
+  // Short side-labels for the wheel rim (the full names don't fit beside the ring).
+  mjoWhMarA:  {zh:'海洋大陆', en:'Maritime'},
+  mjoWhMarB:  {zh:'（我们这里）', en:'(us)'},
+  mjoWhHemA:  {zh:'西半球', en:'W. Hem.'},
+  mjoWhHemB:  {zh:'／非洲', en:'/ Africa'},
+  // Phase→region key printed under the wheel. Geometry alone is easy to misread,
+  // so the mapping is also stated in words.
+  mjoWhKey1:  {zh:'位相 4–5 海洋大陆（我们这里）· 6–7 西太平洋',
+               en:'Phases 4–5 Maritime Continent (us) · 6–7 W Pacific'},
+  mjoWhKey2:  {zh:'8–1 西半球／非洲 · 2–3 印度洋',
+               en:'8–1 W Hem / Africa · 2–3 Indian Ocean'},
   // farm advice
   mjoFarmWet: {zh:'MJO 正经过本区（第 {p} 位相）——未来约 1–2 周降雨与雷雨偏多。安排好喷药与采收时段，注意排水与园区通行。',
                en:'MJO is passing over us (phase {p}) — expect more rain and thunderstorms over the next 1–2 weeks. Time spraying and harvesting around it; mind drainage and access.'},
@@ -1120,7 +1131,7 @@ function iodMap(){  var t = function(k){ return tr(k); };
 // phase, marks the Maritime Continent (phases 4-5, "us"), and plots the
 // current (RMM1,RMM2) point. mjo = parsed row or null.
 function mjoWheel(mjo){  var t = function(k){ return tr(k); };
-  var cx=130, cy=132, R=92, rIn=26;
+  var cx=150, cy=130, R=92, rIn=26;   // wider box: the side labels need room
   function pol(ang,r){ var a=ang*Math.PI/180; return [cx+r*Math.cos(a), cy - r*Math.sin(a)]; }
   function wedge(a0,a1,fill){
     var p0=pol(a0,rIn), p1=pol(a0,R), p2=pol(a1,R), p3=pol(a1,rIn);
@@ -1136,7 +1147,7 @@ function mjoWheel(mjo){  var t = function(k){ return tr(k); };
   var cur = mjo ? mjo.phase : 0;
   var active = mjo && mjo.amp>=1;
   // viewBox tall enough for the bottom region label to sit clear of the edge
-  var svg='<svg viewBox="0 0 260 268" class="ninomap" role="img" aria-label="MJO phase wheel">';
+  var svg='<svg viewBox="0 0 300 284" class="ninomap" role="img" aria-label="MJO phase wheel">';
   for (var ph=1; ph<=8; ph++){
     var a=PH[ph];
     var fill='#f1f5f9';
@@ -1161,11 +1172,21 @@ function mjoWheel(mjo){  var t = function(k){ return tr(k); };
   // rim (not dead-center) so the plotted point never collides with the text.
   svg+='<circle cx="'+cx+'" cy="'+cy+'" r="'+rIn+'" fill="#fff" stroke="#94a3b8" stroke-width="1" stroke-dasharray="2 2"/>';
   svg+='<text x="'+cx+'" y="'+(cy+rIn-5)+'" font-size="7" fill="#94a3b8" text-anchor="middle">amp 1</text>';
-  // region labels around the ring
-  svg+='<text x="'+cx+'" y="20" font-size="8.5" fill="#64748b" text-anchor="middle">'+t('mjoRegWPac')+'</text>';
-  svg+='<text x="'+cx+'" y="258" font-size="8.5" font-weight="bold" fill="#a16207" text-anchor="middle">'+t('mjoRegMaritime')+'</text>';
-  svg+='<text x="6" y="'+(cy+3)+'" font-size="8.5" fill="#64748b" text-anchor="start">'+t('mjoRegIndian')+'</text>';
-  svg+='<text x="254" y="'+(cy+3)+'" font-size="8.5" fill="#64748b" text-anchor="end">'+t('mjoRegPac')+'</text>';
+  // Region labels around the ring. These MUST match the wedge angles above:
+  // phases 4-5 (Maritime Continent, us) sit on the RIGHT, 6-7 top, 8-1 left,
+  // 2-3 bottom. They were previously rotated a quadrant, so the wheel said the
+  // Maritime Continent was at the bottom where phases 2-3 actually are — the
+  // opposite of what the same app's advice text and yellow band both say.
+  svg+='<text x="'+cx+'" y="18" font-size="8.5" fill="#64748b" text-anchor="middle">'+t('mjoRegWPac')+'</text>';          // 6-7
+  svg+='<text x="'+cx+'" y="240" font-size="8.5" fill="#64748b" text-anchor="middle">'+t('mjoRegIndian')+'</text>';        // 2-3
+  svg+='<text x="4" y="'+(cy-2)+'" font-size="7.5" fill="#64748b" text-anchor="start">'+t('mjoWhHemA')+'</text>';          // 8-1
+  svg+='<text x="4" y="'+(cy+9)+'" font-size="7.5" fill="#64748b" text-anchor="start">'+t('mjoWhHemB')+'</text>';
+  svg+='<text x="296" y="'+(cy-2)+'" font-size="7.5" font-weight="bold" fill="#a16207" text-anchor="end">'+t('mjoWhMarA')+'</text>';  // 4-5 (us)
+  svg+='<text x="296" y="'+(cy+9)+'" font-size="7.5" font-weight="bold" fill="#a16207" text-anchor="end">'+t('mjoWhMarB')+'</text>';
+  // Written key: the picture and the words now have to agree, and a reader who
+  // misreads the ring can still get the mapping right.
+  svg+='<text x="'+cx+'" y="264" font-size="7" fill="#94a3b8" text-anchor="middle">'+t('mjoWhKey1')+'</text>';
+  svg+='<text x="'+cx+'" y="276" font-size="7" fill="#94a3b8" text-anchor="middle">'+t('mjoWhKey2')+'</text>';
   // plot current point: amplitude maps so amp=1 sits at the rIn ring, growing
   // outward toward R at amp~3. Weak MJO (<1) therefore sits inside the dashed
   // ring, which visually reads as "inactive".
