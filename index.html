@@ -155,8 +155,19 @@
   .row .k{color:var(--muted)}
   .row .v{font-weight:700;font-variant-numeric:tabular-nums}
   .v.warm{color:var(--warm)} .v.cool{color:var(--cool)} .v.neutral{color:var(--ink)}
-  .spark{display:flex;align-items:flex-end;gap:3px;height:60px;margin:8px 0 2px}
-  .bar{flex:1;border-radius:2px 2px 0 0;min-height:2px;position:relative}
+  /* Diverging bar chart: every bar is measured from the ZERO line in the middle.
+     Previously positive bars were stuck to the container's bottom edge and
+     negative ones to its top edge, so the two signs hung off opposite sides of
+     the box with no shared baseline — an El Niño bar and a La Niña bar of the
+     same magnitude did not line up, and a lone positive bar looked like it was
+     floating. */
+  .spark{display:flex;align-items:stretch;gap:3px;height:62px;margin:8px 0 2px;position:relative}
+  .spark .zeroline{position:absolute;left:0;right:0;top:50%;height:1px;
+    background:#94a3b8;opacity:.5;pointer-events:none}
+  .bar-cell{flex:1;position:relative}
+  .bar{position:absolute;left:0;right:0;min-height:2px}
+  .bar.up{bottom:50%;border-radius:2px 2px 0 0}   /* warm: grows up from zero */
+  .bar.dn{top:50%;border-radius:0 0 2px 2px}      /* cool: grows down from zero */
   .axis-row{display:flex;gap:3px;margin-top:4px}
   .axis-row span{flex:1;display:flex;flex-direction:column;align-items:center;
     line-height:1.25;white-space:nowrap}
@@ -498,8 +509,8 @@ var T = {
                en:'Niño 3.4 straddles Niño 3 and Niño 4 — that\u2019s why it\u2019s "3.4"'},
   helpWeekly:  {zh:'每周 Niño 3.4 = 同一片海域的 最新一周温度，更新更快。可以看最近是在升温还是降温。',
                 en:'Weekly Niño 3.4 = the latest week\u2019s temperature of the same ocean patch, updated faster. Shows whether things are warming or cooling lately.'},
-  helpTrend:   {zh:'趋势图 = 过去两年逐季的变化。红柱=厄尔尼诺，蓝柱=拉尼娜，灰柱=中性。',
-                en:'Trend chart = how each season changed over the last two years. Red = El Niño, blue = La Niña, grey = Neutral.'},
+  helpTrend:   {zh:'趋势图 = 过去两年逐季的变化。中线＝0：向上为暖（厄尔尼诺方向），向下为冷（拉尼娜方向）。红柱=厄尔尼诺，蓝柱=拉尼娜，灰柱=中性。',
+                en:'Trend chart = how each season changed over the last two years. The middle line is zero: bars grow up for warm (El Niño side) and down for cool (La Niña side). Red = El Niño, blue = La Niña, grey = Neutral.'},
   helpNow:     {zh:'现在的情况（实时数据）：', en:'Right now (live data): '},
   helpOutlookLabel: {zh:'NOAA 官方展望', en:'NOAA official outlook'},
   // NOTE: this paragraph must never state what the current outlook IS. That
@@ -1531,13 +1542,15 @@ function render(roni, weekly, cachedAt, iod, mjo, mon, out){
   // spark: last 24 seasons
   var hist = roni.slice(-24);
   var maxAbs = Math.max(1.0, Math.max.apply(null, hist.map(function(h){return Math.abs(h.anom);})));
+  // Each bar starts at the zero line and grows toward its sign, so warm and cool
+  // seasons are directly comparable. Half the 62px box per side -> 28px max.
   var bars = hist.map(function(h){
-    var hpx = Math.max(2, Math.round(Math.abs(h.anom)/maxAbs*54));
+    var hpx = Math.max(2, Math.round(Math.abs(h.anom)/maxAbs*28));
     var col = h.anom>=THRESH?'#dc2626':h.anom<=-THRESH?'#2563eb':'#cbd5e1';
     var up = h.anom>=0;
-    return '<div class="bar" style="height:'+hpx+'px;background:'+col+';align-self:'
-      +(up?'flex-end':'flex-start')+'" title="'+h.seas+' '+h.yr+': '+fmt(h.anom)+'"></div>';
-  }).join('');
+    return '<div class="bar-cell"><div class="bar '+(up?'up':'dn')+'" style="height:'+hpx
+      +'px;background:'+col+'" title="'+h.seas+' '+h.yr+': '+fmt(h.anom)+'"></div></div>';
+  }).join('') + '<div class="zeroline"></div>';
   var axisLabels = hist.map(function(h,i){
     return '<span>'+(i%4===0?('<b>'+h.seas+'</b><i>\u2019'+h.yr.slice(2)+'</i>'):'')+'</span>';
   }).join('');
