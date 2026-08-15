@@ -169,6 +169,11 @@
     min-width:44px;min-height:34px;padding:0 12px;font-size:17px;font-weight:600;
     line-height:1;display:flex;align-items:center;justify-content:center}
   .mapzoom .zbtn:active{background:#dbe3ea}
+  .rotbtn{min-height:34px;padding:0 13px;font-size:12.5px;font-weight:600;
+    display:inline-flex;align-items:center;flex-shrink:0;white-space:nowrap}
+  /* While rotation is armed the canvas is visibly different -- otherwise the
+     page not scrolling looks like the app has frozen. */
+  .ninocanvas.rot{box-shadow:0 0 0 2px #0c4a6e;border-radius:8px}
   .mapzoom .zlvl{display:flex;align-items:center;justify-content:center;
     min-width:46px;padding:0 6px;background:#fff;font-size:11.5px;color:var(--muted);
     font-variant-numeric:tabular-nums;
@@ -507,7 +512,9 @@ var langFn = function(){ return 'zh'; };
 
 function inst(id){
   if (!INST[id]) INST[id] = { proj:'ortho', rot:[140,0], scale:1,
-                              w:0, h:0, cx:0, cy:0, R:0, drag:null };
+                              w:0, h:0, cx:0, cy:0, R:0, drag:null,
+                              // Touch rotation is OFF until asked for -- see setRotate().
+                              rotate:false };
   return INST[id];
 }
 function project(V, lon, lat){
@@ -682,7 +689,12 @@ function bind(id){
     var b=cv.getBoundingClientRect();
     return [ev.clientX-b.left, ev.clientY-b.top];
   }
+  // A mouse never competes with page scrolling, so it always drags. A finger
+  // only drags once rotation is switched on; otherwise we ignore it completely
+  // and leave the gesture to the browser's scroller.
+  function touchBlocked(ev){ return ev.pointerType !== 'mouse' && !V.rotate; }
   cv.addEventListener('pointerdown', function(ev){
+    if (touchBlocked(ev)) return;
     V.drag=pos(ev); cv.setPointerCapture(ev.pointerId); cv.style.cursor='grabbing';
   });
   function stop(){ V.drag=null; cv.style.cursor='grab'; }
@@ -715,7 +727,9 @@ function bind(id){
 
   // Pinch zoom (touch). Two active pointers -> track the distance between them.
   var pts = {}, pinch0 = 0, scale0 = 1;
-  cv.addEventListener('pointerdown', function(ev){ pts[ev.pointerId]=[ev.clientX,ev.clientY];
+  cv.addEventListener('pointerdown', function(ev){
+    if (touchBlocked(ev)) return;
+    pts[ev.pointerId]=[ev.clientX,ev.clientY];
     var k=Object.keys(pts);
     if (k.length===2){ V.drag=null; pinch0=dist(pts[k[0]],pts[k[1]]); scale0=V.scale; }
   });
@@ -736,7 +750,7 @@ function bind(id){
   // there looking like a current reading.
   cv.addEventListener('pointerleave', function(){
     var out=document.getElementById('nread-'+id);
-    if (out) out.textContent = trFn('mapDragHint');
+    if (out) out.textContent = trFn(V.rotate ? 'mapHintRot' : 'mapHintScroll');
   });
 
   cv.style.cursor='grab';
@@ -764,6 +778,8 @@ function markup(id){
        // row above, flex-wrap would break the pair apart and orphan the "+" on a
        // line by itself, which is what it did at phone width.
        +'<div class="mapctl mapctl-z">'
+         +'<button type="button" class="mapbtn rotbtn" data-rot="1" aria-pressed="false"'
+           +' onclick="NinoMap.toggleRotate(\''+id+'\')">'+trFn('mapRotOff')+'</button>'
          +'<span class="mapzoom">'
            +'<button type="button" class="mapbtn zbtn" data-zoom="-1" aria-label="'
              + trFn('mapZoomOut') + '" onclick="NinoMap.zoom(\''+id+'\',-1)">\u2212</button>'
@@ -771,14 +787,14 @@ function markup(id){
            +'<button type="button" class="mapbtn zbtn" data-zoom="1" aria-label="'
              + trFn('mapZoomIn') + '" onclick="NinoMap.zoom(\''+id+'\',1)">+</button>'
          +'</span>'
-         +'<span class="mapread" id="nread-'+id+'">'+trFn('mapDragHint')+'</span>'
+         +'<span class="mapread" id="nread-'+id+'">'+trFn('mapHintScroll')+'</span>'
        +'</div>'
      +'</div>'
    +'</div>';
 }
 function mount(id){
   if (!document.getElementById('nmap-'+id)) return;
-  bind(id); sizeTo(id); syncZoom(id);
+  bind(id); sizeTo(id); syncZoom(id); setRotate(id, inst(id).rotate);
 }
 function setProj(id, p){
   var V=inst(id), box=document.getElementById('nctl-'+id), b, i;
@@ -795,6 +811,37 @@ function setView(id, v){
     for (i=0;i<b.length;i++) b[i].classList.toggle('on', b[i].getAttribute('data-view')===v); }
   sizeTo(id); syncZoom(id);
 }
+// Touch rotation toggle.
+//
+// The canvas cannot both rotate under a finger and let the page scroll under
+// the same finger -- touch-action must pick one. pan-y (the old setting)
+// protected page scrolling but handed every vertical gesture to the browser,
+// which on an orthographic globe is exactly the tilt axis: drags fought the
+// scroller and were cancelled part-way through. none fixes dragging but traps
+// scrolling inside a tall card. So the user chooses, and can see which mode
+// they are in.
+function setRotate(id, on){
+  var V=inst(id), cv=document.getElementById('nmap-'+id);
+  var box=document.getElementById('nmapbox-'+id), hint, b, i;
+  V.rotate = !!on;
+  if (cv){
+    cv.style.touchAction = V.rotate ? 'none' : 'pan-y';
+    if (cv.classList) cv.classList.toggle('rot', V.rotate);
+  }
+  if (box){
+    b=box.querySelectorAll('[data-rot]');
+    for (i=0;i<b.length;i++){
+      if (b[i].classList) b[i].classList.toggle('on', V.rotate);
+      b[i].textContent = trFn(V.rotate ? 'mapRotOn' : 'mapRotOff');
+      b[i].setAttribute('aria-pressed', V.rotate ? 'true' : 'false');
+    }
+  }
+  hint=document.getElementById('nread-'+id);
+  if (hint) hint.textContent = trFn(V.rotate ? 'mapHintRot' : 'mapHintScroll');
+  if (!V.rotate) V.drag=null;
+}
+function toggleRotate(id){ setRotate(id, !inst(id).rotate); }
+
 function setScale(id, s){
   var V=inst(id), n=clamp(s, 0.7, 8);
   if (Math.abs(n-V.scale) < 1e-4) return;
@@ -831,6 +878,7 @@ function resizeAll(){
 window.addEventListener('resize', resizeAll);
 
 return { markup:markup, mount:mount, setProj:setProj, setView:setView, zoom:zoom,
+         toggleRotate:toggleRotate, setRotate:setRotate,
          setData:setData, setI18n:setI18n, resizeAll:resizeAll,
          REGIONS:REGIONS, _ramp:ramp, _cutRing:cutRing, _PROJ:PROJ,
          _rot:rot, _unrot:unrot };
@@ -1081,6 +1129,12 @@ var T = {
   mapViewPac: {zh:'太平洋', en:'Pacific'},
   mapViewMY:  {zh:'马来西亚', en:'Malaysia'},
   mapDragHint:{zh:'拖动旋转 · 滚轮／双指缩放', en:'drag to rotate · wheel/pinch to zoom'},
+  mapRotOff:  {zh:'✋ 开启旋转', en:'✋ Rotate'},
+  mapRotOn:   {zh:'✋ 旋转中', en:'✋ Rotating'},
+  mapHintScroll:{zh:'现在上下滑动可正常翻页。要拖动地球，先点「✋ 开启旋转」。',
+                 en:'Swiping scrolls the page as usual. To drag the globe, tap ✋ Rotate first.'},
+  mapHintRot: {zh:'拖动旋转 · 双指缩放 · 再点一次恢复翻页',
+               en:'Drag to rotate · pinch to zoom · tap again to restore page scrolling'},
   mapZoomIn:  {zh:'放大', en:'Zoom in'},
   mapZoomOut: {zh:'缩小', en:'Zoom out'},
   wkChange:   {zh:'较上周', en:'Change vs last week'},
