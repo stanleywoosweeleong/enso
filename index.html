@@ -157,9 +157,22 @@
      horizontal drag is what rotates the map. */
   .ninocanvas{display:block;width:100%;border-radius:8px;background:#f8fafc;
     touch-action:pan-y}
-  .mapfoot{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:7px}
+  .mapfoot{display:flex;flex-direction:column;gap:7px;margin-top:7px}
   .mapctl{display:flex;gap:4px;align-items:center;flex-wrap:wrap}
+  .mapctl-z{gap:10px}
   .mapgap{width:6px}
+  /* One segmented control, nowrap: the -/+ pair must never be split across
+     lines, and each half needs a thumb-sized target. */
+  .mapzoom{display:inline-flex;flex-wrap:nowrap;align-items:stretch;flex-shrink:0;
+    border:1px solid var(--line);border-radius:8px;overflow:hidden;background:#f1f5f9}
+  .mapzoom .zbtn{border:0;border-radius:0;background:transparent;color:#334155;
+    min-width:44px;min-height:34px;padding:0 12px;font-size:17px;font-weight:600;
+    line-height:1;display:flex;align-items:center;justify-content:center}
+  .mapzoom .zbtn:active{background:#dbe3ea}
+  .mapzoom .zlvl{display:flex;align-items:center;justify-content:center;
+    min-width:46px;padding:0 6px;background:#fff;font-size:11.5px;color:var(--muted);
+    font-variant-numeric:tabular-nums;
+    border-left:1px solid var(--line);border-right:1px solid var(--line)}
   .mapbtn{font:inherit;font-size:11.5px;line-height:1;padding:5px 8px;cursor:pointer;
     background:#f1f5f9;color:#334155;border:1px solid var(--line);border-radius:7px}
   .mapbtn.on{background:#0c4a6e;border-color:#0c4a6e;color:#fff}
@@ -746,13 +759,20 @@ function markup(id){
          +'<span class="mapgap"></span>'
          + btn('view', trFn('mapViewPac'), 'pac', true)
          + btn('view', trFn('mapViewMY'),  'my')
-         +'<span class="mapgap"></span>'
-         +'<button type="button" class="mapbtn zoom" data-zoom="-1" aria-label="'
-           + trFn('mapZoomOut') + '" onclick="NinoMap.zoom(\''+id+'\',-1)">\u2212</button>'
-         +'<button type="button" class="mapbtn zoom" data-zoom="1" aria-label="'
-           + trFn('mapZoomIn') + '" onclick="NinoMap.zoom(\''+id+'\',1)">+</button>'
        +'</div>'
-       +'<div class="mapread" id="nread-'+id+'">'+trFn('mapDragHint')+'</div>'
+       // Zoom sits on its own row as ONE segmented control. Left in the wrapping
+       // row above, flex-wrap would break the pair apart and orphan the "+" on a
+       // line by itself, which is what it did at phone width.
+       +'<div class="mapctl mapctl-z">'
+         +'<span class="mapzoom">'
+           +'<button type="button" class="mapbtn zbtn" data-zoom="-1" aria-label="'
+             + trFn('mapZoomOut') + '" onclick="NinoMap.zoom(\''+id+'\',-1)">\u2212</button>'
+           +'<span class="zlvl" id="nzoom-'+id+'" aria-hidden="true">1.0\u00d7</span>'
+           +'<button type="button" class="mapbtn zbtn" data-zoom="1" aria-label="'
+             + trFn('mapZoomIn') + '" onclick="NinoMap.zoom(\''+id+'\',1)">+</button>'
+         +'</span>'
+         +'<span class="mapread" id="nread-'+id+'">'+trFn('mapDragHint')+'</span>'
+       +'</div>'
      +'</div>'
    +'</div>';
 }
@@ -782,13 +802,19 @@ function setScale(id, s){
 }
 function zoom(id, dir){ setScale(id, inst(id).scale * (dir>0 ? 1.35 : 1/1.35)); }
 function syncZoom(id){
-  var V=inst(id), box=document.getElementById('nctl-'+id), b, i;
+  // Query the whole widget, not the button row: the zoom pair lives in its own
+  // row now, so scoping to #nctl- would silently find nothing.
+  var V=inst(id), box=document.getElementById('nmapbox-'+id), b, i, lvl;
   if (!box) return;
   b=box.querySelectorAll('[data-zoom]');
   for (i=0;i<b.length;i++){
     var d=+b[i].getAttribute('data-zoom');
     b[i].disabled = (d>0 && V.scale>=8-1e-6) || (d<0 && V.scale<=0.7+1e-6);
   }
+  // Mutate the existing node's text -- never rebuild it, or the buttons beside
+  // it lose their handlers.
+  lvl=document.getElementById('nzoom-'+id);
+  if (lvl) lvl.textContent = V.scale.toFixed(1)+'\u00d7';
 }
 function setData(vals, stale, week){
   DATA = { vals:vals||null, stale:!!stale, week:week||null };
