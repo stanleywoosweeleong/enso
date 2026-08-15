@@ -73,6 +73,10 @@
     line-height:1.35;border-top:1px solid;
     border-bottom-left-radius:14px;border-bottom-right-radius:14px}
   .verdict-i{font-size:17px;flex-shrink:0}
+  .herolag{font-size:11.5px;line-height:1.6;color:var(--muted);margin:8px 14px 0;
+    padding-top:8px;border-top:1px dashed var(--line)}
+  .heroadv{font-size:12.5px;line-height:1.6;color:#92400e;margin:7px 14px 0}
+  .heroadv .outdate{color:#b8860b;font-weight:400}
   .verdict-warm{background:#fef7ed;color:#9a3412;border-top-color:#fed7aa}
   .verdict-cool{background:#eff6ff;color:#1d4ed8;border-top-color:#bfdbfe}
   .verdict-neutral{background:#f1f5f9;color:#475569;border-top-color:#e2e8f0}
@@ -93,6 +97,9 @@
   .offlinebar span{display:block;font-size:11px;font-weight:400;margin-top:3px;opacity:.85}
   .iodage{background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:8px 11px;
     margin:10px 0 0;font-size:12.5px;line-height:1.6;color:#92400e}
+  .iodneutral{background:#f8fafc;border:1px solid var(--line);border-left:3px solid #94a3b8;
+    border-radius:0 8px 8px 0;padding:11px 13px;margin:8px 0 0;font-size:12.5px;
+    line-height:1.6;color:#475569}
   .iodfail{background:#fef2f2;border:1px solid #fecaca;border-radius:8px;padding:11px 13px;
     margin:8px 0 0;font-size:12.5px;line-height:1.6;color:#b91c1c}
   .surgealert{background:#fef2f2;border:1.5px solid #f87171;border-radius:10px;
@@ -144,6 +151,37 @@
   .help .mapwrap{background:#f8fafc;border:1px solid var(--line);border-radius:10px;
     padding:8px}
   .help .ninomap{display:block;width:100%;height:auto}
+  /* ---- Niño region map (real projection, canvas) ---- */
+  .nmap{position:relative}
+  /* pan-y, not none: a vertical swipe must still scroll the card list;
+     horizontal drag is what rotates the map. */
+  .ninocanvas{display:block;width:100%;border-radius:8px;background:#f8fafc;
+    touch-action:pan-y}
+  .mapfoot{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:7px}
+  .mapctl{display:flex;gap:4px;align-items:center;flex-wrap:wrap}
+  .mapgap{width:6px}
+  .mapbtn{font:inherit;font-size:11.5px;line-height:1;padding:5px 8px;cursor:pointer;
+    background:#f1f5f9;color:#334155;border:1px solid var(--line);border-radius:7px}
+  .mapbtn.on{background:#0c4a6e;border-color:#0c4a6e;color:#fff}
+  .mapbtn.zoom{min-width:30px;font-size:14px;font-weight:600;padding:3px 8px}
+  .mapbtn:disabled{opacity:.38;cursor:default}
+  .mapread{margin-left:auto;font-size:10.5px;color:var(--muted);
+    font-variant-numeric:tabular-nums;white-space:nowrap}
+  .nregions{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:10px}
+  .nreg{border:1px solid var(--line);border-radius:9px;padding:6px 4px;text-align:center}
+  .nreg.key{border-color:#f59e0b;background:#fffbeb}
+  .nreg .rk{font-size:10.5px;color:var(--muted);white-space:nowrap}
+  .nreg .rv{font-size:15px;font-weight:700;font-variant-numeric:tabular-nums;
+    line-height:1.35}
+  .nreg .rv.na{color:#94a3b8;font-weight:400}
+  .maplegend{display:flex;gap:10px;align-items:center;justify-content:center;
+    font-size:10.5px;color:var(--muted);margin-top:8px;flex-wrap:wrap}
+  .maplegend i{display:inline-block;width:16px;height:9px;border-radius:2px;
+    vertical-align:-1px;margin-right:4px}
+  .mapnote{font-size:11.5px;color:var(--muted);line-height:1.6;margin-top:8px}
+  .wktrend{font-size:11.5px;color:var(--muted);margin:13px 0 -2px}
+  .spark.spark-wk{height:50px;gap:2px}
+  .spark.spark-wk + .axis-row{gap:2px}
   .help .outlook{background:#fffbeb;border:1px solid #fde68a;border-radius:10px;
     padding:11px 12px;margin-top:10px}
   .help .outlook-h{font-size:12px;font-weight:700;color:#92400e;margin-bottom:6px}
@@ -263,6 +301,517 @@
 <div class="help-overlay" id="shareoverlay" onclick="shareCancel()"></div>
 
 <script>
+/* ==========================================================================
+   NIÑO REGION MAP  —  真实投影地图模块 / real-projection map module
+   --------------------------------------------------------------------------
+   Replaces the old schematic SVG with a properly projected map. No d3, no
+   tiles, no CDN — coastline is Natural Earth 110m (world-atlas), simplified
+   with Douglas–Peucker at 0.4° and inlined below, so it works offline.
+
+   Three projections: orthographic globe (O), equirectangular (E), Winkel
+   tripel (W3) — the same one earth.nullschool.net defaults to.
+
+   Region boxes are densified to 1° BEFORE projection, so their edges follow
+   the sphere instead of cutting straight across it. Niño 4 crosses the
+   antimeridian and is expressed as 160°E → 210°E.
+
+   Box tints come from NinoMap.data, which render() fills from the weekly CPC
+   row the app already fetches. If that row is stale the app sets stale:true
+   and no tint is drawn — a coloured box would be a claim about right now.
+   ========================================================================== */
+var NinoMap = (function(){
+"use strict";
+
+var LAND = [[[-67.8,-53.8,-65.1,-54.7,-65.5,-55.2,-67.0,-54.9,-69.2,-55.5,-72.3,-54.5,-74.7,-52.8,-71.1,-54.1,-70.3,-52.9,-68.6,-52.6,-67.8,-53.8]],[[-58.5,-51.1,-57.7,-51.5,-58.0,-51.9,-59.8,-51.8,-60.7,-52.3,-61.2,-51.8,-58.5,-51.1]],[[70.3,-49.7,68.7,-49.8,68.9,-48.6,70.5,-49.1,70.3,-49.7]],[[145.4,-40.8,148.3,-40.9,148.4,-42.1,147.9,-43.2,147.6,-42.9,146.9,-43.6,146.0,-43.5,144.7,-41.2,144.7,-40.7,145.4,-40.8]],[[173.0,-40.9,174.2,-41.3,172.7,-43.4,173.1,-43.9,171.5,-44.2,170.6,-45.9,169.3,-46.6,166.7,-46.2,167.0,-45.1,170.5,-43.0,172.8,-40.5,173.0,-40.9]],[[174.6,-36.2,175.3,-37.2,175.4,-36.5,175.8,-36.8,176.0,-37.6,178.5,-37.7,178.0,-39.2,177.2,-39.1,175.2,-41.7,174.7,-41.3,174.9,-39.9,173.8,-39.5,174.6,-38.8,174.7,-37.4,172.6,-34.5,174.3,-35.3,174.6,-36.2]],[[-180.0,-16.6,178.7,-17.0,179.1,-16.4,-179.8,-16.0,-180.0,-16.6]],[[50.1,-13.6,50.4,-15.7,49.7,-15.7,49.8,-16.9,47.1,-24.9,45.4,-25.6,44.0,-25.0,43.4,-21.3,44.4,-20.1,44.4,-16.2,46.3,-15.8,47.7,-14.6,49.2,-12.0,50.1,-13.6]],[[143.6,-13.8,143.9,-14.5,144.6,-14.2,145.4,-15.0,146.4,-19.0,148.8,-20.4,149.7,-22.3,150.7,-22.4,150.9,-23.5,152.9,-25.3,153.6,-28.1,152.9,-31.6,149.4,-37.8,146.3,-39.0,144.9,-38.4,145.0,-37.9,143.6,-38.8,140.6,-38.0,139.6,-36.1,138.1,-35.6,138.2,-34.4,136.8,-35.3,137.8,-32.9,136.0,-34.9,135.2,-34.5,134.3,-32.6,131.3,-31.5,126.1,-32.2,124.2,-33.0,123.7,-33.9,119.9,-34.0,118.0,-35.1,116.6,-35.0,115.0,-34.2,115.8,-32.2,114.6,-28.8,113.3,-26.1,113.8,-26.5,113.4,-25.6,114.2,-26.3,113.4,-24.4,114.1,-21.8,114.2,-22.5,116.7,-20.7,120.9,-19.7,123.0,-16.4,123.4,-17.3,123.9,-17.1,123.8,-16.1,124.3,-16.3,125.7,-14.2,127.1,-13.8,128.4,-14.9,129.6,-15.0,129.4,-14.4,130.6,-12.5,132.6,-12.1,131.8,-11.3,132.4,-11.1,135.3,-12.2,136.5,-11.9,137.0,-12.4,136.0,-13.3,135.5,-15.0,140.2,-17.7,140.9,-17.4,141.7,-15.0,142.1,-11.0,142.8,-11.2,143.6,-13.8]],[[124.4,-10.1,123.6,-10.4,124.0,-9.3,125.9,-8.4,127.3,-8.4,124.4,-10.1]],[[108.6,-6.8,112.6,-6.9,113.0,-7.6,115.7,-8.4,114.6,-8.8,110.6,-8.1,105.4,-6.9,106.1,-5.9,108.6,-6.8]],[[152.0,-5.5,150.2,-6.3,148.3,-5.7,149.8,-5.5,150.0,-5.0,150.8,-5.5,152.1,-4.1,152.0,-5.5]],[[130.5,-3.1,130.8,-3.9,128.6,-3.4,127.9,-3.4,128.1,-2.8,130.5,-3.1]],[[134.1,-1.2,134.4,-2.8,135.5,-3.4,136.3,-2.3,138.3,-1.7,144.6,-3.9,146.0,-5.5,147.6,-6.1,147.9,-6.6,147.0,-6.7,147.2,-7.4,148.7,-9.1,150.8,-10.3,150.0,-10.7,147.9,-10.1,146.0,-8.1,144.7,-7.6,143.3,-8.2,143.4,-9.0,142.6,-9.3,139.1,-8.1,137.6,-8.4,138.7,-7.3,137.9,-5.4,133.7,-3.5,133.0,-4.1,132.0,-2.8,133.7,-2.2,132.2,-2.2,130.5,-0.9,132.4,-0.4,134.1,-1.2]],[[125.2,1.4,123.7,0.2,120.2,0.2,120.0,-0.5,120.9,-1.4,123.3,-0.6,123.3,-1.1,121.5,-1.9,123.2,-5.3,122.2,-5.3,122.7,-4.5,121.5,-4.6,121.0,-2.6,120.3,-2.9,120.4,-5.5,119.4,-5.4,119.5,-3.5,118.8,-2.8,120.0,0.6,120.9,1.3,124.1,0.9,125.2,1.4]],[[128.7,1.1,128.6,0.3,128.1,0.4,128.4,-0.8,127.7,-0.3,127.6,1.8,127.9,2.2,128.7,1.1]],[[105.8,-5.9,104.7,-5.9,102.6,-4.2,98.6,1.8,95.4,5.0,95.3,5.5,97.5,5.2,100.6,2.1,101.7,2.1,103.8,0.1,103.4,-0.7,106.1,-3.1,105.8,-5.9]],[[117.9,1.8,119.0,0.9,117.8,0.8,116.1,-4.0,114.9,-4.1,113.3,-3.1,112.1,-3.5,110.2,-2.9,109.0,0.4,109.7,2.0,111.2,1.9,111.4,2.7,113.0,3.1,117.1,6.9,119.2,5.4,117.3,3.2,117.9,1.8]],[[126.4,8.4,126.2,6.3,125.8,7.3,125.4,5.6,124.2,6.2,124.2,7.4,122.8,7.5,122.1,6.9,122.3,8.0,125.5,9.0,125.4,9.8,126.4,8.4]],[[81.2,6.2,80.3,6.0,79.9,6.8,80.1,9.8,81.8,7.5,81.2,6.2]],[[124.0,10.3,123.0,9.0,122.6,10.0,122.9,10.9,123.5,10.9,123.3,10.3,124.1,11.2,124.0,10.3]],[[125.5,12.2,125.8,11.0,125.0,11.3,125.3,10.4,124.8,10.1,124.8,10.8,124.3,12.6,125.5,12.2]],[[121.3,18.5,122.2,18.5,122.5,17.1,121.7,15.9,121.7,14.3,124.0,13.8,124.1,12.5,123.3,13.0,122.9,13.6,122.7,13.2,120.6,13.9,121.0,14.5,119.9,15.4,120.7,18.5,121.3,18.5]],[[-72.6,19.9,-70.8,19.9,-68.8,19.0,-68.3,18.6,-68.7,18.2,-70.7,18.4,-71.4,17.6,-74.5,18.3,-72.3,18.7,-73.4,19.6,-72.6,19.9]],[[110.3,18.7,108.7,18.5,109.1,19.8,110.8,20.1,110.3,18.7]],[[-79.7,22.8,-74.2,20.3,-77.8,19.9,-77.1,20.4,-78.7,21.6,-82.8,22.7,-85.0,21.9,-82.3,23.2,-79.7,22.8]],[[121.2,22.8,120.7,22.0,120.2,22.8,120.7,24.5,121.5,25.3,122.0,25.0,121.2,22.8]],[[134.6,34.1,134.2,33.2,133.3,33.3,133.0,32.7,132.4,33.0,132.9,34.1,134.6,34.1]],[[15.5,38.2,15.1,36.6,13.8,37.1,12.4,37.6,12.6,38.1,15.5,38.2]],[[9.2,41.2,9.8,40.5,9.7,39.2,8.8,38.9,8.2,41.0,9.2,41.2]],[[141.0,37.1,140.3,35.1,137.2,34.6,135.8,33.5,135.1,33.8,135.1,34.6,131.0,33.9,132.0,33.1,130.7,31.0,129.4,33.3,132.6,35.4,135.7,35.5,136.7,37.3,137.4,36.8,138.9,37.8,140.1,39.4,140.3,41.2,141.4,41.4,141.9,40.0,141.0,37.1]],[[143.9,44.2,145.3,44.4,145.5,43.3,144.1,43.0,143.2,42.0,141.6,42.7,141.1,41.6,140.0,41.6,139.8,42.6,140.3,43.3,141.4,43.4,142.0,45.6,143.9,44.2]],[[-123.5,48.5,-125.7,48.8,-128.4,50.5,-125.8,50.3,-123.5,48.5]],[[-56.1,50.7,-56.8,49.8,-56.1,50.1,-53.5,49.2,-53.8,48.5,-53.1,48.7,-52.6,47.5,-53.1,46.7,-54.2,46.8,-54.2,47.8,-55.4,46.9,-56.0,46.9,-55.3,47.4,-56.3,47.6,-59.3,47.6,-57.4,50.7,-55.9,51.6,-55.4,51.6,-56.1,50.7]],[[-132.7,54.0,-131.7,54.1,-132.1,53.0,-131.2,52.2,-132.2,52.6,-133.1,53.4,-133.2,54.2,-132.7,54.0]],[[143.6,50.7,144.7,49.0,143.2,49.3,142.6,47.9,143.5,46.1,142.7,46.7,142.1,46.0,141.9,48.9,142.2,51.0,141.6,51.9,141.7,53.3,142.6,53.8,142.2,54.2,142.7,54.4,143.6,50.7]],[[-6.8,52.3,-10.0,51.8,-9.2,52.9,-9.7,53.9,-8.3,54.7,-6.7,55.2,-5.7,54.6,-6.8,52.3]],[[-153.0,57.1,-154.5,57.0,-154.7,57.5,-153.8,57.8,-152.1,57.6,-153.0,57.1]],[[-3.0,58.6,-4.1,57.6,-2.0,57.7,-3.1,56.0,-0.4,54.5,0.5,52.9,1.7,52.7,1.0,51.8,1.4,51.3,-5.2,50.0,-5.8,50.2,-3.4,51.4,-5.3,52.0,-4.2,52.3,-4.8,52.8,-4.6,53.5,-3.1,53.4,-2.9,54.0,-4.8,54.8,-5.0,55.8,-5.6,55.3,-6.2,56.8,-5.0,58.6,-3.0,58.6]],[[-85.2,65.7,-85.0,65.2,-80.8,64.1,-80.1,63.7,-81.0,63.4,-83.1,64.1,-85.5,63.1,-87.2,63.5,-86.4,64.0,-85.9,65.7,-85.2,65.7]],[[-14.5,66.5,-14.7,65.8,-13.6,65.1,-18.7,63.5,-22.8,64.0,-21.8,64.4,-24.0,64.9,-22.2,65.1,-24.3,65.6,-23.7,66.3,-22.1,66.4,-20.6,65.7,-14.5,66.5]],[[-75.9,67.1,-77.2,67.6,-75.9,68.3,-75.1,68.0,-75.9,67.1]],[[-180.0,69.0,-174.9,67.2,-175.0,66.6,-174.3,66.3,-174.6,67.1,-171.9,66.9,-169.9,66.0,-172.5,65.4,-172.6,64.5,-173.9,64.3,-176.2,65.4,-178.4,65.4,-178.7,66.1,-179.9,65.9,-179.4,65.4,-180.0,65.0,180.0,65.0,177.4,64.6,179.4,63.0,179.2,62.3,173.7,61.7,170.3,59.9,168.9,60.6,166.3,59.8,163.5,59.9,162.0,58.2,163.2,57.6,163.1,56.2,162.1,56.1,162.1,54.9,160.4,54.3,160.0,53.2,158.5,53.0,158.2,51.9,156.8,51.0,155.4,55.4,155.9,56.8,156.8,57.8,158.4,58.1,163.7,61.1,164.5,62.6,163.3,62.5,162.7,61.6,160.1,60.5,159.3,61.8,156.7,61.4,154.2,59.8,155.0,59.1,151.3,58.8,151.3,59.5,149.8,59.7,142.2,59.0,135.1,54.7,138.2,53.8,139.9,54.2,141.3,53.1,141.4,52.2,140.6,51.2,140.1,48.4,136.9,45.1,133.5,42.8,132.3,43.3,130.9,42.6,129.7,41.6,129.7,40.9,127.5,39.8,127.4,39.2,129.5,36.8,129.1,35.1,126.5,34.4,126.1,36.7,126.9,36.9,124.7,38.1,125.3,39.6,124.3,39.9,121.1,38.9,122.2,40.4,121.6,40.9,118.0,39.2,117.5,38.7,118.9,37.4,120.8,37.9,122.4,37.5,122.5,36.9,121.1,36.7,119.2,34.9,120.2,34.4,121.9,31.7,121.9,30.9,121.3,30.7,122.1,29.8,121.7,28.2,121.1,28.1,118.7,24.5,115.9,22.8,110.8,21.4,110.4,20.3,109.9,20.3,109.9,21.4,108.0,21.6,105.9,19.8,106.4,18.0,108.9,15.3,109.2,11.7,105.2,8.6,105.1,9.9,103.5,10.6,102.6,12.2,100.8,12.6,101.0,13.4,100.1,13.4,99.2,9.2,99.9,9.2,100.5,7.4,103.4,4.9,104.2,1.3,103.5,1.2,101.4,2.8,100.1,6.5,98.5,8.4,98.3,7.8,98.8,11.4,97.2,16.9,95.4,15.7,94.2,16.0,94.5,17.3,93.7,19.7,92.4,20.7,91.4,22.8,90.5,22.8,90.3,21.8,89.0,22.1,87.0,21.5,87.0,20.7,82.2,16.6,80.3,15.9,79.9,10.4,77.5,8.0,76.6,8.9,73.5,16.0,72.6,21.4,70.5,20.9,69.2,22.1,69.6,22.5,67.4,23.9,66.4,25.4,61.5,25.1,57.4,25.7,57.0,27.0,53.5,26.8,51.5,27.9,50.1,30.1,48.0,30.0,50.8,24.8,51.0,26.0,51.6,25.8,51.8,24.0,54.0,24.1,56.4,26.4,56.8,24.2,58.7,23.6,59.8,22.3,57.8,20.2,57.7,18.9,54.8,16.9,52.4,16.4,52.2,15.6,48.7,14.0,43.5,12.6,42.7,16.8,39.1,21.3,38.5,23.7,34.6,28.1,35.0,29.4,33.9,27.6,32.4,29.9,35.7,23.9,35.5,23.1,36.9,22.0,37.5,18.6,38.4,18.0,39.3,15.9,43.1,12.7,43.3,12.0,42.7,11.7,44.6,10.4,51.1,12.0,51.0,10.6,48.6,5.3,40.3,-2.6,38.7,-5.9,39.5,-7.1,39.2,-8.5,40.5,-10.8,40.5,-15.4,39.5,-16.7,37.4,-17.6,34.8,-19.8,35.6,-22.1,35.5,-24.1,32.6,-25.7,32.2,-28.8,28.2,-32.8,25.8,-33.9,22.6,-33.9,20.1,-34.8,18.2,-33.9,18.2,-31.7,15.2,-27.1,14.3,-22.1,11.8,-18.1,11.8,-15.8,13.7,-10.7,11.9,-5.0,8.8,-1.1,9.8,3.1,8.5,4.8,5.9,4.3,4.3,6.3,1.1,5.9,-2.0,4.7,-4.6,5.2,-7.5,4.3,-9.0,4.8,-12.4,7.3,-14.8,10.9,-16.7,12.4,-16.7,13.6,-17.6,14.7,-16.7,15.6,-16.1,18.1,-17.0,21.9,-14.4,26.3,-9.6,29.9,-9.3,32.6,-6.9,34.1,-5.9,35.8,-2.2,35.2,1.5,36.6,9.5,37.4,10.2,36.7,11.1,36.9,10.3,33.8,15.2,32.3,15.7,31.4,19.1,30.3,20.1,31.0,20.1,32.2,21.5,32.8,28.9,30.9,31.0,31.6,32.0,30.9,34.6,31.5,36.0,34.6,36.2,36.7,32.5,36.1,30.6,36.7,29.7,36.1,27.6,36.7,26.3,38.2,26.8,39.0,26.2,39.5,27.3,40.4,28.8,40.5,29.2,41.2,31.1,41.1,33.5,42.0,38.3,40.9,41.6,41.5,41.5,42.6,36.7,45.2,39.1,47.3,35.0,46.3,35.0,45.7,36.5,45.5,36.3,45.1,33.9,44.4,32.5,45.3,33.6,45.9,30.7,46.6,29.6,45.0,28.8,44.9,27.7,42.6,28.8,41.1,26.4,40.2,25.4,40.9,23.7,40.7,24.4,40.1,22.6,40.3,24.0,38.2,24.0,37.7,23.1,37.9,23.4,37.4,22.8,37.3,23.2,36.4,21.7,36.8,19.4,40.3,19.4,41.9,16.0,43.5,14.9,45.1,14.0,44.8,13.9,45.6,13.1,45.7,12.3,45.4,12.6,44.1,18.5,40.2,18.3,39.8,16.9,40.4,16.5,39.8,17.1,38.9,16.1,38.0,15.7,37.9,16.1,39.0,15.4,40.0,12.1,41.7,10.5,42.9,10.2,43.9,8.9,44.4,6.5,43.1,3.1,43.1,3.0,41.9,0.8,41.0,-0.3,39.3,0.1,38.7,-2.1,36.7,-4.4,36.7,-5.4,35.9,-6.5,36.9,-8.9,36.9,-8.8,38.3,-9.5,38.7,-8.8,40.8,-9.4,43.0,-8.0,43.7,-1.9,43.4,-1.4,44.0,-1.2,46.0,-3.0,47.6,-4.5,48.0,-4.6,48.7,-1.6,48.6,-1.9,49.8,-1.0,49.3,1.3,50.1,1.6,50.9,3.8,51.6,4.7,53.1,8.1,53.5,8.8,54.0,8.1,55.5,8.5,57.1,10.6,57.7,10.3,56.9,10.9,56.5,9.6,55.5,10.9,54.0,12.5,54.5,14.1,53.8,17.6,54.9,19.7,54.4,21.3,55.2,21.1,56.8,21.6,57.4,22.5,57.8,24.1,57.0,24.4,58.4,23.4,58.6,23.3,59.2,29.1,60.0,28.1,60.5,22.9,59.8,21.3,60.7,21.5,63.2,25.4,65.1,23.9,66.0,22.2,65.7,21.2,65.0,21.4,64.4,17.8,62.7,17.1,61.3,18.8,60.1,16.8,58.7,15.9,56.1,12.9,55.4,10.4,59.5,8.4,58.3,5.7,58.6,5.0,62.0,10.5,64.5,14.8,67.8,19.2,69.8,28.2,71.2,31.3,70.5,30.0,70.2,31.1,69.6,36.5,69.1,40.3,67.9,41.1,67.5,41.1,66.8,38.4,66.0,33.2,66.6,34.8,65.9,34.9,64.4,37.0,63.9,36.5,64.8,37.2,65.1,39.6,64.5,40.4,64.8,39.8,65.5,42.1,66.5,44.0,66.1,44.5,66.8,43.7,67.4,44.2,68.0,43.5,68.6,46.3,68.2,46.8,67.7,45.6,67.6,46.3,66.7,53.7,68.9,54.5,68.8,53.5,68.2,58.8,68.9,59.9,68.3,61.1,68.9,60.0,69.5,60.6,69.9,68.5,68.1,69.2,68.6,66.9,69.5,67.3,69.9,66.7,71.0,69.9,73.0,72.6,72.8,72.8,72.2,71.8,71.4,72.8,70.4,72.6,69.0,73.7,68.4,71.3,66.3,72.4,66.2,75.1,67.8,74.5,68.3,74.9,69.0,73.6,69.6,74.4,70.6,73.1,71.4,74.9,72.1,74.7,72.8,75.7,72.3,75.3,71.3,76.4,71.2,75.9,71.9,77.6,72.3,81.5,71.7,80.5,73.6,86.8,73.9,86.0,74.5,87.2,75.1,100.8,76.4,102.0,77.3,104.4,77.7,106.1,77.4,104.7,77.1,107.0,77.0,107.2,76.5,111.1,76.7,114.1,75.8,113.9,75.3,109.4,74.2,113.0,74.0,113.5,73.3,118.8,73.6,119.0,73.1,127.0,73.6,128.6,73.0,129.1,72.4,128.5,72.0,129.7,71.2,131.3,70.8,132.3,71.8,139.9,71.5,139.1,72.4,140.5,72.8,149.5,72.2,153.0,70.8,159.0,70.9,159.8,70.5,159.7,69.7,160.9,69.4,167.8,69.6,169.6,68.7,170.8,69.0,170.0,69.7,170.5,70.1,178.6,69.4,-180.0,69.0],[49.1,41.3,50.4,40.3,49.6,40.2,48.9,38.8,49.2,37.6,52.3,36.7,53.9,37.2,53.9,39.0,53.1,39.3,53.4,40.0,52.7,40.0,52.9,40.9,54.7,41.0,53.7,42.1,52.9,41.9,52.8,41.1,52.5,42.8,51.3,43.1,50.3,44.3,51.3,44.5,51.3,45.2,53.0,45.3,53.0,46.9,51.2,47.0,49.1,46.4,46.7,44.6,49.1,41.3]],[[-95.6,69.1,-98.4,69.0,-99.8,69.4,-98.9,69.7,-98.2,70.1,-95.6,69.1]],[[-90.5,69.5,-90.5,68.5,-89.2,69.3,-88.0,68.6,-88.3,67.9,-87.3,67.2,-85.6,68.8,-85.5,69.9,-82.6,69.7,-81.3,69.2,-82.0,68.1,-81.3,67.6,-83.3,66.4,-85.8,66.6,-87.3,64.8,-93.2,62.0,-94.6,60.1,-94.7,58.9,-93.2,58.8,-92.3,57.1,-90.9,57.3,-85.0,55.3,-82.3,55.1,-82.1,53.3,-79.9,51.2,-78.6,52.6,-79.8,54.7,-78.2,55.1,-76.5,56.5,-77.3,58.1,-78.5,58.8,-77.3,59.9,-78.1,62.3,-73.8,62.4,-71.4,61.1,-69.6,61.1,-69.3,59.0,-67.7,58.2,-64.6,60.3,-61.4,57.0,-61.8,56.3,-57.3,54.6,-55.8,53.3,-55.7,52.1,-60.0,50.2,-66.4,50.2,-71.1,46.8,-68.7,48.3,-65.1,49.2,-64.2,48.7,-65.1,48.1,-64.5,46.2,-61.5,45.9,-60.5,47.0,-59.8,45.9,-65.4,43.5,-66.1,43.6,-66.2,44.5,-64.4,45.3,-67.1,45.1,-70.8,42.9,-70.0,41.6,-74.0,40.8,-74.9,38.9,-75.5,39.5,-75.1,38.4,-75.9,37.2,-76.4,39.1,-76.3,38.1,-77.0,38.2,-76.3,37.9,-75.7,35.6,-81.3,31.4,-80.1,26.9,-80.4,25.2,-81.2,25.2,-82.9,27.9,-82.9,29.1,-84.1,30.1,-85.1,29.6,-86.4,30.4,-89.2,30.3,-89.2,29.3,-90.2,29.1,-93.2,29.8,-96.6,28.3,-97.4,27.4,-97.1,25.9,-97.9,22.4,-96.3,19.3,-94.4,18.1,-91.4,18.9,-89.6,21.3,-86.8,21.3,-88.9,15.9,-85.0,16.0,-83.1,15.0,-83.9,11.4,-82.2,9.0,-79.0,9.6,-76.8,8.6,-74.9,11.1,-73.4,11.2,-71.8,12.4,-71.1,12.1,-71.9,11.4,-71.7,9.1,-71.0,9.9,-71.4,11.0,-70.2,11.4,-69.9,12.2,-68.2,10.6,-64.9,10.1,-61.9,10.7,-62.7,10.4,-62.4,9.9,-60.8,9.4,-60.7,8.6,-59.1,8.0,-58.5,6.8,-57.1,6.0,-54.0,5.8,-51.3,4.2,-50.0,1.7,-50.4,-0.1,-48.6,-0.2,-48.6,-1.2,-47.8,-0.6,-44.9,-1.6,-44.6,-2.7,-40.0,-2.9,-37.2,-4.8,-35.6,-5.1,-34.7,-7.3,-35.1,-9.0,-39.0,-13.8,-39.3,-17.9,-40.9,-21.9,-42.0,-23.0,-44.6,-23.4,-47.6,-24.9,-48.5,-25.9,-48.9,-28.7,-53.8,-34.4,-56.2,-34.9,-58.4,-33.9,-58.5,-34.4,-57.2,-35.3,-56.8,-36.9,-57.7,-38.2,-62.3,-38.8,-62.1,-40.7,-65.1,-41.1,-65.0,-42.1,-63.8,-42.0,-63.5,-42.6,-65.2,-43.5,-65.6,-45.0,-67.3,-45.6,-67.6,-46.3,-65.6,-47.2,-69.1,-50.7,-68.2,-52.4,-70.8,-52.9,-71.4,-53.9,-75.3,-51.6,-75.6,-48.7,-74.1,-46.9,-75.6,-46.6,-74.7,-45.8,-74.4,-44.1,-73.2,-44.5,-72.7,-42.4,-73.4,-42.1,-73.7,-43.4,-74.3,-43.2,-73.2,-39.3,-73.6,-37.2,-71.4,-32.4,-71.5,-28.9,-70.1,-21.4,-70.4,-18.3,-76.0,-14.6,-79.0,-8.4,-81.3,-6.1,-81.1,-4.0,-79.8,-2.7,-81.0,-2.2,-80.1,0.8,-78.9,1.4,-77.1,3.8,-78.2,8.3,-79.6,8.9,-80.5,8.1,-80.0,7.5,-80.9,7.2,-81.7,8.1,-83.5,8.4,-85.0,10.1,-85.1,9.6,-85.7,9.9,-85.7,11.1,-87.7,12.9,-87.5,13.3,-91.7,14.1,-94.7,16.2,-96.6,15.7,-103.5,18.3,-105.5,19.9,-105.3,21.4,-106.0,22.8,-109.3,25.6,-109.3,26.4,-111.8,28.5,-113.1,31.2,-113.9,31.6,-114.8,31.8,-114.7,30.2,-111.6,26.7,-110.7,24.3,-109.4,23.4,-110.0,22.8,-112.2,24.7,-112.3,26.0,-115.1,27.7,-114.2,28.6,-115.5,29.6,-117.3,33.0,-120.6,34.6,-124.4,40.3,-123.9,45.5,-124.7,48.2,-123.1,48.0,-122.6,47.1,-122.8,49.0,-127.4,50.8,-127.8,52.3,-129.1,52.8,-129.3,53.6,-132.0,55.5,-132.2,56.4,-134.1,58.1,-136.6,58.2,-139.9,59.5,-147.1,60.9,-148.2,60.7,-148.0,60.0,-151.7,59.2,-151.4,60.7,-150.3,61.0,-150.6,61.3,-154.0,59.4,-153.3,58.9,-154.2,58.1,-158.4,56.0,-164.8,54.4,-158.7,57.0,-157.0,58.9,-159.1,58.4,-160.4,59.1,-162.0,58.7,-161.9,59.6,-163.8,59.8,-166.1,61.5,-164.6,63.1,-160.8,63.8,-161.5,64.4,-160.8,64.8,-165.0,64.4,-168.1,65.7,-164.5,66.6,-161.7,66.1,-166.8,68.4,-164.4,68.9,-161.9,70.3,-156.6,71.4,-154.3,70.7,-143.6,70.2,-136.5,68.9,-129.8,70.2,-129.1,69.8,-128.1,70.5,-125.8,69.5,-124.4,70.2,-124.3,69.4,-121.5,69.8,-115.2,68.9,-113.9,68.4,-115.3,67.9,-109.9,68.0,-108.9,67.4,-107.8,67.9,-108.8,68.3,-108.2,68.7,-106.1,68.8,-101.5,67.6,-98.4,67.8,-98.6,68.4,-97.7,68.6,-96.1,68.2,-96.1,67.3,-94.2,69.1,-96.5,70.1,-96.4,71.2,-95.2,71.9,-92.9,71.3,-91.5,70.2,-92.4,69.7,-90.5,69.5]],[[-114.2,73.1,-114.7,72.7,-112.4,73.0,-111.1,72.5,-109.9,73.0,-108.2,71.7,-107.7,72.1,-108.4,73.1,-105.4,72.7,-104.5,71.0,-101.0,70.0,-101.1,69.6,-102.7,69.5,-102.4,68.8,-107.1,69.1,-113.3,68.5,-116.1,69.2,-117.3,70.0,-112.4,70.4,-117.9,70.5,-118.4,70.9,-116.1,71.3,-119.4,71.6,-117.9,72.7,-114.2,73.1]],[[-76.3,73.1,-79.8,72.8,-80.9,73.3,-80.4,73.8,-76.3,73.1]],[[-86.6,73.2,-85.8,72.5,-84.9,73.3,-82.3,73.8,-80.6,72.7,-80.8,72.1,-77.8,72.8,-74.2,71.8,-74.1,71.3,-72.2,71.6,-67.9,70.1,-67.0,69.2,-68.8,68.7,-61.9,66.9,-63.9,65.0,-66.7,66.4,-68.0,66.3,-68.1,65.7,-65.3,64.4,-64.7,63.4,-65.0,62.7,-68.8,63.7,-66.2,61.9,-71.0,62.9,-74.8,64.7,-77.7,64.2,-78.6,64.6,-77.9,65.3,-74.0,65.5,-74.3,65.8,-72.9,67.7,-76.9,68.9,-76.2,69.1,-77.3,69.8,-79.0,70.2,-81.3,69.7,-88.7,70.4,-89.5,70.8,-88.5,71.2,-89.9,71.2,-90.2,72.2,-88.4,73.5,-85.8,73.8,-86.6,73.2]],[[-100.4,73.8,-97.1,73.5,-98.1,73.0,-96.5,72.6,-96.7,71.7,-98.4,71.3,-102.5,72.5,-100.4,72.7,-101.5,73.4,-100.4,73.8]],[[-93.2,72.8,-94.3,72.0,-95.4,72.1,-96.0,72.9,-95.5,73.9,-90.5,73.9,-93.2,72.8]],[[-120.5,71.4,-123.1,70.9,-125.9,71.9,-123.9,73.7,-124.9,74.3,-121.5,74.4,-115.5,73.5,-119.2,72.5,-120.5,71.4]],[[145.1,75.6,144.3,74.8,139.0,74.6,137.0,75.3,138.8,76.1,145.1,75.6]],[[-98.5,76.7,-97.7,76.3,-98.2,75.0,-100.9,75.1,-100.9,75.6,-102.5,75.6,-102.6,76.3,-98.5,76.7]],[[-108.2,76.2,-105.9,76.0,-106.3,75.0,-113.7,74.4,-111.8,75.2,-117.7,75.2,-115.4,76.5,-110.8,75.5,-109.1,75.5,-110.5,76.4,-109.6,76.8,-108.2,76.2]],[[57.5,70.7,53.7,70.8,51.5,72.0,54.4,73.6,53.5,73.8,55.9,74.6,55.6,75.1,57.9,75.6,66.2,76.8,68.9,76.5,58.5,74.3,55.4,72.4,55.6,71.5,57.5,70.7]],[[-94.7,77.1,-91.6,76.8,-89.2,75.6,-81.1,75.7,-79.8,74.9,-81.9,74.4,-92.4,74.8,-92.9,75.9,-97.1,76.8,-94.7,77.1]],[[-116.2,77.6,-117.1,76.5,-121.5,75.9,-122.9,76.1,-121.2,76.9,-116.2,77.6]],[[-110.2,77.7,-112.1,77.4,-113.5,77.7,-112.7,78.1,-110.2,77.7]],[[24.7,77.9,22.5,77.4,20.7,77.7,21.4,77.9,20.8,78.3,22.9,78.5,24.7,77.9]],[[-100.1,78.3,-99.7,77.9,-101.3,78.0,-105.2,78.4,-104.2,78.7,-105.5,79.3,-103.5,79.2,-100.1,78.3]],[[105.1,78.3,99.4,77.9,102.1,79.3,105.4,78.7,105.1,78.3]],[[18.3,79.7,21.5,79.0,19.0,78.6,17.1,76.8,13.8,77.4,14.7,77.7,10.4,79.7,18.3,79.7]],[[25.4,80.4,27.4,80.1,25.9,79.5,19.9,79.8,17.4,80.3,25.4,80.4]],[[51.1,80.5,47.6,80.0,46.5,80.2,47.1,80.6,44.8,80.6,51.1,80.5]],[[99.9,78.9,95.0,79.0,91.2,80.3,95.9,81.3,100.2,79.8,99.9,78.9]],[[-87.0,79.7,-85.8,79.3,-90.8,78.2,-94.0,78.8,-93.1,79.4,-96.1,79.7,-96.7,80.2,-94.7,81.2,-92.4,81.3,-87.0,79.7]],[[-68.5,83.1,-61.9,82.4,-67.7,81.5,-65.5,81.5,-71.2,79.8,-76.9,79.3,-75.5,79.2,-76.2,79.0,-75.4,78.5,-79.8,77.2,-77.9,76.8,-80.6,76.2,-89.5,76.5,-89.6,77.0,-87.8,77.2,-88.3,77.9,-85.0,77.5,-88.0,78.4,-85.1,79.3,-86.9,80.3,-81.8,80.5,-87.6,80.5,-91.6,81.9,-85.5,82.7,-83.2,82.3,-82.4,82.9,-79.3,83.1,-68.5,83.1]],[[-27.1,83.5,-20.8,82.7,-31.4,82.0,-22.9,82.1,-22.1,81.7,-23.2,81.2,-15.8,81.9,-12.2,81.3,-20.0,80.2,-17.7,80.1,-19.7,78.8,-19.7,77.6,-18.5,77.0,-21.7,76.6,-19.8,76.1,-19.6,75.2,-20.7,75.2,-19.4,74.3,-21.6,74.2,-20.4,73.8,-20.8,73.5,-23.6,73.3,-22.3,72.2,-24.8,72.3,-22.1,71.5,-21.8,70.7,-23.5,70.5,-25.5,71.4,-25.2,70.8,-26.4,70.2,-22.3,70.1,-27.7,68.5,-31.8,68.1,-34.2,66.7,-39.8,65.5,-41.2,63.5,-42.8,62.7,-42.4,61.9,-43.4,60.1,-44.8,60.0,-46.3,60.9,-48.3,60.9,-51.6,63.6,-54.0,67.2,-53.0,68.4,-51.5,68.7,-50.9,69.9,-54.7,69.6,-54.4,70.8,-51.4,70.6,-55.8,71.7,-54.7,72.6,-57.3,74.7,-61.3,76.1,-68.5,76.1,-71.4,77.0,-66.8,77.4,-71.0,77.6,-73.3,78.0,-73.2,78.4,-65.7,79.4,-65.3,79.8,-68.0,80.1,-62.2,81.3,-62.6,81.8,-50.4,82.4,-44.5,81.7,-46.9,82.2,-46.8,82.6,-43.4,83.2,-27.1,83.5]]];
+
+var D = Math.PI/180;
+function clamp(v,a,b){ return v<a?a:(v>b?b:v); }
+function wrap180(l){ return ((l+180)%360+360)%360-180; }
+
+/* ---------- rotation (d3 convention: rotate([lon,lat])) ---------- */
+function rot(lon,lat,dl,dp){
+  var l=(lon+dl)*D, p=lat*D, cp=Math.cos(p);
+  var x=Math.cos(l)*cp, y=Math.sin(l)*cp, z=Math.sin(p);
+  var c=Math.cos(dp*D), s=Math.sin(dp*D);
+  var x2=x*c+z*s, z2=z*c-x*s;
+  return [Math.atan2(y,x2)/D, Math.asin(clamp(z2,-1,1))/D];
+}
+function unrot(lon,lat,dl,dp){
+  var l=lon*D, p=lat*D, cp=Math.cos(p);
+  var x=Math.cos(l)*cp, y=Math.sin(l)*cp, z=Math.sin(p);
+  var c=Math.cos(-dp*D), s=Math.sin(-dp*D);
+  var x2=x*c+z*s, z2=z*c-x*s;
+  return [wrap180(Math.atan2(y,x2)/D-dl), Math.asin(clamp(z2,-1,1))/D];
+}
+
+/* ---------- projections. fwd returns [x,y] in radii, or null if hidden ---- */
+var PHI1 = Math.acos(2/Math.PI);
+var PROJ = {
+  ortho: {
+    fwd: function(l,p){ l*=D; p*=D; var cp=Math.cos(p);
+      if (Math.cos(l)*cp < 0) return null;
+      return [cp*Math.sin(l), -Math.sin(p)]; },
+    inv: function(x,y){ var r2=x*x+y*y; if (r2>1.0001) return null;
+      var z=Math.sqrt(Math.max(0,1-r2));
+      return [Math.atan2(x,z)/D, Math.asin(clamp(-y,-1,1))/D]; },
+    ext: [2,2], sphere: true
+  },
+  equi: {
+    fwd: function(l,p){ return [l*D, -p*D]; },
+    inv: function(x,y){ var l=x/D, p=-y/D;
+      if (Math.abs(l)>180 || Math.abs(p)>90) return null; return [l,p]; },
+    ext: [2*Math.PI, Math.PI], sphere: false
+  },
+  winkel: {
+    fwd: function(l,p){ l*=D; p*=D;
+      var a=Math.acos(clamp(Math.cos(p)*Math.cos(l/2),-1,1));
+      var sa=(a===0)?1:Math.sin(a)/a;
+      return [0.5*(l*Math.cos(PHI1)+2*Math.cos(p)*Math.sin(l/2)/sa),
+             -0.5*(p+Math.sin(p)/sa)]; },
+    // No closed-form inverse exists for Winkel tripel: damped, clamped Newton.
+    inv: function(x,y){
+      var l=clamp(x/Math.cos(PHI1)/D,-180,180), p=clamp(-y/D,-90,90);
+      var h=1e-5, ex=1, ey=1, i, f, fl, fp, a, b, c, d, det;
+      for (i=0;i<40;i++){
+        f=PROJ.winkel.fwd(l,p); ex=f[0]-x; ey=f[1]-y;
+        if (Math.abs(ex)<1e-9 && Math.abs(ey)<1e-9) break;
+        fl=PROJ.winkel.fwd(l+h,p); fp=PROJ.winkel.fwd(l,p+h);
+        a=(fl[0]-f[0])/h; b=(fp[0]-f[0])/h; c=(fl[1]-f[1])/h; d=(fp[1]-f[1])/h;
+        det=a*d-b*c; if(!det) return null;
+        l=clamp(l-( d*ex-b*ey)/det,-180,180);
+        p=clamp(p-(-c*ex+a*ey)/det,-90,90);
+      }
+      if (Math.abs(ex)>1e-4 || Math.abs(ey)>1e-4) return null;
+      return [l,p]; },
+    ext: [5.1416, Math.PI], sphere: false
+  }
+};
+
+/* ---------- Niño regions. lonE may exceed 180 (Niño 4) ---------- */
+var REGIONS = [
+  { id:'1+2', lonW:-90,  lonE:-80,  latS:-10, latN:0 },
+  { id:'3',   lonW:-150, lonE:-90,  latS:-5,  latN:5 },
+  { id:'4',   lonW:160,  lonE:210,  latS:-5,  latN:5 },
+  { id:'3.4', lonW:-170, lonE:-120, latS:-5,  latN:5, key:true }
+];
+function densify(r, step){
+  var p=[], x, y;
+  function push(a,b){ p.push([wrap180(a),b]); }
+  for (x=r.lonW; x< r.lonE; x+=step) push(x,r.latS);
+  for (y=r.latS; y< r.latN; y+=step) push(r.lonE,y);
+  for (x=r.lonE; x> r.lonW; x-=step) push(x,r.latN);
+  for (y=r.latN; y> r.latS; y-=step) push(r.lonW,y);
+  p.push(p[0]); return p;
+}
+REGIONS.forEach(function(r){
+  r.ring = densify(r,1);
+  r.cLon = wrap180((r.lonW+r.lonE)/2);
+  r.cLat = (r.latS+r.latN)/2;
+});
+// The 5S-5N strip is only ~18 px tall on screen, so NO label fits inside a box.
+// Anchors sit clear of the strip: 3.4 above (it straddles 3 and 4), the rest
+// below, spread in longitude so they do not stack.
+// labLon fixes the horizontal anchor; the VERTICAL offset is computed in
+// pixels at draw time from the box's own projected edge. A fixed latitude
+// offset does not work: the strip shrinks with the canvas and with zoom-out,
+// but the text does not, so on a narrow phone a degree-based anchor lands
+// back on top of the box. side = +1 below, -1 above; rank pushes extra rows.
+REGIONS[0].labLon = -80;  REGIONS[0].side =  1; REGIONS[0].rank = 1;  // 1+2
+REGIONS[1].labLon = -118; REGIONS[1].side =  1; REGIONS[1].rank = 0;  // 3
+REGIONS[2].labLon = -178; REGIONS[2].side =  1; REGIONS[2].rank = 0;  // 4
+REGIONS[3].labLon = -145; REGIONS[3].side = -1; REGIONS[3].rank = 0;  // 3.4
+
+var MARKS = [
+  { lon:102.4, lat:3.2, col:'#0f766e', key:'mapMY', dy:1.4 },
+  { lon:-68,   lat:-20, col:'#9a3412', key:'mapSA', dy:1.4 }
+];
+
+/* ---------- clipping ------------------------------------------------------
+   Sutherland–Hodgman against a longitude strip, applied in the ROTATED frame.
+   Two different limits, one implementation:
+     |lon| <= 180 → the antimeridian seam on a flat map
+     |lon| <=  90 → the visible hemisphere of an orthographic globe (the limb)
+   Without this, a split polygon closes with a chord straight across the map.  */
+function clipHalf(poly, sign, lim){
+  var out=[], n=poly.length, i, a, b, ia, ib, t;
+  if(!n) return out;
+  for (i=0;i<n;i++){
+    a=poly[i]; b=poly[(i+1)%n];
+    ia = sign*a[0] <= sign*lim+1e-9;
+    ib = sign*b[0] <= sign*lim+1e-9;
+    if (ia) out.push(a);
+    if (ia!==ib){ t=(lim-a[0])/(b[0]-a[0]); out.push([lim, a[1]+(b[1]-a[1])*t]); }
+  }
+  return out;
+}
+// The clipper returns only the endpoints of an edge lying along the clip line.
+// On a globe that edge IS the limb and on Winkel it is a curved border, so a
+// straight chord would cut the corner. Subdivide it.
+function densifyEdge(poly, lim){
+  var out=[], n=poly.length, i, a, b, steps, k;
+  for (i=0;i<n;i++){
+    a=poly[i]; b=poly[(i+1)%n];
+    out.push(a);
+    if (Math.abs(Math.abs(a[0])-lim)<1e-6 && Math.abs(a[0]-b[0])<1e-6){
+      steps=Math.ceil(Math.abs(b[1]-a[1])/2);
+      for (k=1;k<steps;k++) out.push([a[0], a[1]+(b[1]-a[1])*k/steps]);
+    }
+  }
+  return out;
+}
+function cutRing(r, lim){
+  var u=[], prev=null, off=0, i, lo, la, d, pieces=[], sh, q, shifts=[-360,0,360];
+  for (i=0;i<r.length;i++){
+    lo=r[i][0]; la=r[i][1];
+    if (prev!==null){ d=lo-prev; if (d>180) off-=360; else if (d<-180) off+=360; }
+    u.push([lo+off,la]); prev=lo;
+  }
+  for (i=0;i<shifts.length;i++){
+    sh=shifts[i];
+    q=u.map(function(pt){ return [pt[0]+sh, pt[1]]; });
+    q=clipHalf(q,-1,-lim); if (q.length<3) continue;
+    q=clipHalf(q, 1, lim);  if (q.length<3) continue;
+    pieces.push(densifyEdge(q,lim));
+  }
+  return pieces;
+}
+
+/* ---------- colour ---------- */
+// Anomaly -> tint. Saturates at +/-2 deg C rather than +/-3: weekly values
+// rarely exceed 2.5, and on this app's pale theme a /3 ramp washed out into
+// grey at the values that actually occur.
+function ramp(a){
+  var t=clamp(a/2,-1,1), u=1-Math.abs(t);
+  if (t>=0) return [225, Math.round(210-140*t), Math.round(205-150*t)];
+  return [Math.round(205-140*Math.abs(t)), Math.round(215-95*Math.abs(t)), 235];
+}
+
+/* ---------- instances ---------- */
+var INST = {};                 // id -> view state
+var DATA = { vals:null, stale:false, week:null };
+var trFn = function(k){ return k; };
+var langFn = function(){ return 'zh'; };
+
+function inst(id){
+  if (!INST[id]) INST[id] = { proj:'ortho', rot:[140,0], scale:1,
+                              w:0, h:0, cx:0, cy:0, R:0, drag:null };
+  return INST[id];
+}
+function project(V, lon, lat){
+  var r = rot(lon,lat,V.rot[0],V.rot[1]);
+  var q = PROJ[V.proj].fwd(r[0], r[1]);
+  if (!q) return null;
+  return [V.cx+q[0]*V.R, V.cy+q[1]*V.R];
+}
+
+function trace(V, ctx, ring, open){
+  var P=PROJ[V.proj], i, l, p, q, x, y, started=false, prev=null, pieces, piece, j;
+  var r = ring.map(function(pt){ return rot(pt[0],pt[1],V.rot[0],V.rot[1]); });
+  if (open){                            // polylines: break, never close
+    for (i=0;i<r.length;i++){
+      l=r[i][0]; p=r[i][1];
+      if (prev!==null && Math.abs(l-prev)>180) started=false;
+      q=P.fwd(l,p);
+      if (!q){ started=false; prev=l; continue; }
+      x=V.cx+q[0]*V.R; y=V.cy+q[1]*V.R;
+      if (started) ctx.lineTo(x,y); else { ctx.moveTo(x,y); started=true; }
+      prev=l;
+    }
+    return;
+  }
+  pieces = cutRing(r, P.sphere ? 90 : 180);
+  for (j=0;j<pieces.length;j++){
+    piece=pieces[j];
+    for (i=0;i<piece.length;i++){
+      q=P.fwd(piece[i][0], piece[i][1]); if(!q) continue;
+      x=V.cx+q[0]*V.R; y=V.cy+q[1]*V.R;
+      if (i) ctx.lineTo(x,y); else ctx.moveTo(x,y);
+    }
+    ctx.closePath();
+  }
+}
+
+function draw(id){
+  var V=inst(id), cv=document.getElementById('nmap-'+id);
+  if (!cv) return;
+  var ctx=cv.getContext('2d'), P=PROJ[V.proj], i, r, a, c, q, e, fs;
+  ctx.clearRect(0,0,V.w,V.h);
+
+  // ocean / map frame
+  ctx.beginPath();
+  if (P.sphere) ctx.arc(V.cx,V.cy,V.R,0,7);
+  else { e=P.ext; ctx.rect(V.cx-e[0]/2*V.R, V.cy-e[1]/2*V.R, e[0]*V.R, e[1]*V.R); }
+  ctx.fillStyle='#e0f2fe'; ctx.fill();
+  ctx.strokeStyle='#7dd3fc'; ctx.lineWidth=1; ctx.stroke();
+  ctx.save(); ctx.clip();
+
+  // graticule
+  ctx.beginPath();
+  for (i=-180;i<=180;i+=30){ (function(lo){ var g=[],la;
+    for (la=-80;la<=80;la+=4) g.push([lo,la]); trace(V,ctx,g,true); })(i); }
+  for (i=-60;i<=60;i+=30){ (function(la){ var g=[],lo;
+    for (lo=-180;lo<=180;lo+=4) g.push([lo,la]); trace(V,ctx,g,true); })(i); }
+  ctx.strokeStyle='rgba(2,132,199,.18)'; ctx.lineWidth=1; ctx.stroke();
+
+  // land
+  ctx.beginPath();
+  LAND.forEach(function(poly){ poly.forEach(function(flat){
+    var g=[], k; for (k=0;k<flat.length;k+=2) g.push([flat[k],flat[k+1]]);
+    trace(V,ctx,g,false);
+  }); });
+  ctx.fillStyle='#cbd5e1'; ctx.fill();
+  ctx.strokeStyle='#94a3b8'; ctx.lineWidth=0.6; ctx.stroke();
+
+  // equator
+  ctx.beginPath();
+  (function(){ var g=[],lo; for (lo=-180;lo<=180;lo+=3) g.push([lo,0]);
+    trace(V,ctx,g,true); })();
+  ctx.strokeStyle='rgba(2,132,199,.6)'; ctx.setLineDash([5,5]);
+  ctx.lineWidth=1; ctx.stroke(); ctx.setLineDash([]);
+
+  // Niño boxes. 3.4 is outlined only — tinting it would paint a blended
+  // colour on top of 3 and 4 and invent a value that is not measured there.
+  for (i=0;i<REGIONS.length;i++){
+    r=REGIONS[i];
+    a = (DATA.vals && !DATA.stale && typeof DATA.vals[r.id]==='number')
+        ? DATA.vals[r.id] : null;
+    c = (a!==null && !r.key) ? ramp(a) : null;
+    ctx.beginPath(); trace(V,ctx,r.ring,false);
+    if (c){ ctx.fillStyle='rgba('+c[0]+','+c[1]+','+c[2]+',.60)'; ctx.fill(); }
+    ctx.strokeStyle = r.key ? '#f59e0b' : '#475569';
+    ctx.lineWidth   = r.key ? 2 : 1.2;
+    if (r.key) ctx.setLineDash([7,4]);
+    ctx.stroke(); ctx.setLineDash([]);
+  }
+
+  ctx.restore();   // leave the clip BEFORE drawing text -- see note below
+
+  // ---- labels ----------------------------------------------------------
+  // Font is nearly constant, NOT proportional to canvas width: the boxes are
+  // a fixed number of degrees tall, so text that scales with the card just
+  // swamps them on a wide screen.
+  var placed = [];
+  ctx.textBaseline='middle';
+
+  // Region names first -- they matter most, so they win any contest for space.
+  fs = Math.round(clamp(V.w/40, 10, 13));
+  ctx.font='700 '+fs+'px system-ui,-apple-system,sans-serif';
+  for (i=0;i<REGIONS.length;i++){
+    r=REGIONS[i];
+    var q0=project(V, r.labLon, 0); if (!q0) continue;
+    // How tall is this box on screen right now? Measure it, don't assume.
+    var qa=project(V, r.labLon, r.latN), qb=project(V, r.labLon, r.latS), half=0;
+    if (qa) half=Math.max(half, Math.abs(qa[1]-q0[1]));
+    if (qb) half=Math.max(half, Math.abs(qb[1]-q0[1]));
+    var dy=r.side * (half + 4 + fs*(0.8 + r.rank*1.2));
+    place(ctx, placed, (r.id==='1+2' ? 'Niño 1+2' : 'Niño '+r.id),
+          q0[0], q0[1]+dy, r.key ? '#92400e' : '#1e293b', 'center', fs);
+  }
+
+  // Markers (Malaysia / your orchard, South America) second.
+  fs = Math.round(clamp(V.w/46, 9, 12));
+  ctx.font='600 '+fs+'px system-ui,-apple-system,sans-serif';
+  for (i=0;i<MARKS.length;i++){
+    q=project(V, MARKS[i].lon, MARKS[i].lat); if (!q) continue;
+    ctx.beginPath(); ctx.arc(q[0],q[1],3.5,0,7);
+    ctx.fillStyle=MARKS[i].col; ctx.fill();
+    ctx.strokeStyle='#fff'; ctx.lineWidth=1.2; ctx.stroke();
+    place(ctx, placed, trFn(MARKS[i].key), q[0], q[1]+MARKS[i].dy*fs,
+          MARKS[i].col, 'center', fs);
+  }
+}
+
+// Draw a label at (x,y), nudging it vertically until it clears everything
+// already placed. If no offset is free the label is DROPPED, not overprinted --
+// an unreadable pile of text is worse than a missing name.
+function place(ctx, placed, s, x, y, col, align, fs){
+  ctx.textAlign = align;
+  var w = ctx.measureText(s).width, h = fs + 4;
+  var x0 = align==='right' ? x-w : (align==='left' ? x : x-w/2);
+  var cand = [0, h+2, -(h+2), 2*h+4, -(2*h+4)], i, j, p, r, hit;
+  for (i=0;i<cand.length;i++){
+    r = { x:x0-3, y:y+cand[i]-h/2, w:w+6, h:h };
+    hit = false;
+    for (j=0;j<placed.length;j++){
+      p = placed[j];
+      if (r.x < p.x+p.w && r.x+r.w > p.x && r.y < p.y+p.h && r.y+r.h > p.y){ hit=true; break; }
+    }
+    if (!hit){ placed.push(r); label(ctx, s, x, y+cand[i], col); return; }
+  }
+}
+function label(ctx, s, x, y, col){
+  ctx.lineWidth=3.5; ctx.strokeStyle='rgba(255,255,255,.92)'; ctx.strokeText(s,x,y);
+  ctx.fillStyle=col; ctx.fillText(s,x,y);
+}
+
+function sizeTo(id){
+  var V=inst(id), cv=document.getElementById('nmap-'+id);
+  if (!cv || !cv.parentElement) return;
+  var w=cv.parentElement.clientWidth || 320;
+  // Winkel/equirect need h >= ~0.61*w to fill the width instead of leaving
+  // big side margins; cap high enough that a wide desktop card still does.
+  var h=Math.round(clamp(w*0.62, 200, 420));
+  var dpr=Math.min(window.devicePixelRatio||1, 2);
+  cv.width=Math.round(w*dpr); cv.height=Math.round(h*dpr);
+  cv.style.width='100%'; cv.style.height=h+'px';
+  cv.getContext('2d').setTransform(dpr,0,0,dpr,0,0);
+  V.w=w; V.h=h; V.cx=w/2; V.cy=h/2;
+  var e=PROJ[V.proj].ext;
+  V.R=Math.min((w-12)/e[0], (h-12)/e[1]) * V.scale;   // fitExtent equivalent
+  draw(id);
+}
+
+function bind(id){
+  var cv=document.getElementById('nmap-'+id), V=inst(id);
+  if (!cv || cv.__bound) return;
+  cv.__bound=true;
+  function pos(ev){
+    var b=cv.getBoundingClientRect();
+    return [ev.clientX-b.left, ev.clientY-b.top];
+  }
+  cv.addEventListener('pointerdown', function(ev){
+    V.drag=pos(ev); cv.setPointerCapture(ev.pointerId); cv.style.cursor='grabbing';
+  });
+  function stop(){ V.drag=null; cv.style.cursor='grab'; }
+  cv.addEventListener('pointerup', stop);
+  cv.addEventListener('pointercancel', stop);
+  cv.addEventListener('pointermove', function(ev){
+    var p=pos(ev), k, out=document.getElementById('nread-'+id), c;
+    if (V.drag){
+      ev.preventDefault();
+      k=90/V.R;
+      V.rot[0]=wrap180(V.rot[0]+(p[0]-V.drag[0])*k);
+      if (V.proj==='ortho') V.rot[1]=clamp(V.rot[1]-(p[1]-V.drag[1])*k,-89,89);
+      V.drag=p; draw(id);
+    }
+    if (out){
+      c=PROJ[V.proj].inv((p[0]-V.cx)/V.R, (p[1]-V.cy)/V.R);
+      if (c) c=unrot(c[0],c[1],V.rot[0],V.rot[1]);
+      out.textContent = c
+        ? (Math.abs(c[1]).toFixed(1)+'\u00B0'+(c[1]<0?'S':'N')+'  '
+         + Math.abs(c[0]).toFixed(1)+'\u00B0'+(c[0]<0?'W':'E'))
+        : '\u2014';
+    }
+  });
+  // Wheel zoom (desktop). passive:false so preventDefault actually stops the
+  // page scrolling under the cursor.
+  cv.addEventListener('wheel', function(ev){
+    ev.preventDefault();
+    setScale(id, V.scale * (ev.deltaY<0 ? 1.12 : 1/1.12));
+  }, {passive:false});
+
+  // Pinch zoom (touch). Two active pointers -> track the distance between them.
+  var pts = {}, pinch0 = 0, scale0 = 1;
+  cv.addEventListener('pointerdown', function(ev){ pts[ev.pointerId]=[ev.clientX,ev.clientY];
+    var k=Object.keys(pts);
+    if (k.length===2){ V.drag=null; pinch0=dist(pts[k[0]],pts[k[1]]); scale0=V.scale; }
+  });
+  cv.addEventListener('pointermove', function(ev){
+    if (!(ev.pointerId in pts)) return;
+    pts[ev.pointerId]=[ev.clientX,ev.clientY];
+    var k=Object.keys(pts);
+    if (k.length===2 && pinch0>0){
+      ev.preventDefault();
+      setScale(id, scale0 * dist(pts[k[0]],pts[k[1]])/pinch0);
+    }
+  });
+  function drop(ev){ delete pts[ev.pointerId]; if (Object.keys(pts).length<2) pinch0=0; }
+  cv.addEventListener('pointerup', drop);
+  cv.addEventListener('pointercancel', drop);
+
+  // Leaving the canvas restores the hint, so a stale coordinate never sits
+  // there looking like a current reading.
+  cv.addEventListener('pointerleave', function(){
+    var out=document.getElementById('nread-'+id);
+    if (out) out.textContent = trFn('mapDragHint');
+  });
+
+  cv.style.cursor='grab';
+}
+function dist(a,b){ var dx=a[0]-b[0], dy=a[1]-b[1]; return Math.sqrt(dx*dx+dy*dy); }
+
+/* ---------- public ---------- */
+function markup(id){
+  function btn(k, lbl, act, on){
+    return '<button type="button" class="mapbtn'+(on?' on':'')+'" data-'+k+'="'+act+'" '
+      + 'onclick="NinoMap.'+(k==='proj'?'setProj':'setView')+"('"+id+"','"+act+"')"+'">'
+      + lbl+'</button>';
+  }
+  return ''
+   +'<div class="nmap" id="nmapbox-'+id+'">'
+     +'<canvas id="nmap-'+id+'" class="ninocanvas"></canvas>'
+     +'<div class="mapfoot">'
+       +'<div class="mapctl" id="nctl-'+id+'">'
+         + btn('proj','O','ortho',true) + btn('proj','E','equi') + btn('proj','W3','winkel')
+         +'<span class="mapgap"></span>'
+         + btn('view', trFn('mapViewPac'), 'pac', true)
+         + btn('view', trFn('mapViewMY'),  'my')
+         +'<span class="mapgap"></span>'
+         +'<button type="button" class="mapbtn zoom" data-zoom="-1" aria-label="'
+           + trFn('mapZoomOut') + '" onclick="NinoMap.zoom(\''+id+'\',-1)">\u2212</button>'
+         +'<button type="button" class="mapbtn zoom" data-zoom="1" aria-label="'
+           + trFn('mapZoomIn') + '" onclick="NinoMap.zoom(\''+id+'\',1)">+</button>'
+       +'</div>'
+       +'<div class="mapread" id="nread-'+id+'">'+trFn('mapDragHint')+'</div>'
+     +'</div>'
+   +'</div>';
+}
+function mount(id){
+  if (!document.getElementById('nmap-'+id)) return;
+  bind(id); sizeTo(id); syncZoom(id);
+}
+function setProj(id, p){
+  var V=inst(id), box=document.getElementById('nctl-'+id), b, i;
+  V.proj=p; if (p!=='ortho') V.rot[1]=0;
+  if (box){ b=box.querySelectorAll('[data-proj]');
+    for (i=0;i<b.length;i++) b[i].classList.toggle('on', b[i].getAttribute('data-proj')===p); }
+  sizeTo(id);
+}
+function setView(id, v){
+  var V=inst(id), box=document.getElementById('nctl-'+id), b, i;
+  if (v==='my'){ V.rot=[-108,-2]; } else { V.rot=[140,0]; }
+  V.scale=1;
+  if (box){ b=box.querySelectorAll('[data-view]');
+    for (i=0;i<b.length;i++) b[i].classList.toggle('on', b[i].getAttribute('data-view')===v); }
+  sizeTo(id); syncZoom(id);
+}
+function setScale(id, s){
+  var V=inst(id), n=clamp(s, 0.7, 8);
+  if (Math.abs(n-V.scale) < 1e-4) return;
+  V.scale=n; sizeTo(id); syncZoom(id);
+}
+function zoom(id, dir){ setScale(id, inst(id).scale * (dir>0 ? 1.35 : 1/1.35)); }
+function syncZoom(id){
+  var V=inst(id), box=document.getElementById('nctl-'+id), b, i;
+  if (!box) return;
+  b=box.querySelectorAll('[data-zoom]');
+  for (i=0;i<b.length;i++){
+    var d=+b[i].getAttribute('data-zoom');
+    b[i].disabled = (d>0 && V.scale>=8-1e-6) || (d<0 && V.scale<=0.7+1e-6);
+  }
+}
+function setData(vals, stale, week){
+  DATA = { vals:vals||null, stale:!!stale, week:week||null };
+  Object.keys(INST).forEach(function(id){
+    if (document.getElementById('nmap-'+id)) draw(id);
+  });
+}
+function setI18n(t){ trFn=t; }
+function resizeAll(){
+  Object.keys(INST).forEach(function(id){
+    if (document.getElementById('nmap-'+id)) sizeTo(id);
+  });
+}
+window.addEventListener('resize', resizeAll);
+
+return { markup:markup, mount:mount, setProj:setProj, setView:setView, zoom:zoom,
+         setData:setData, setI18n:setI18n, resizeAll:resizeAll,
+         REGIONS:REGIONS, _ramp:ramp, _cutRing:cutRing, _PROJ:PROJ,
+         _rot:rot, _unrot:unrot };
+})();
+</script>
+
+<script>
 /* ===================== CONFIG ===================== */
 // Set your deployed Cloudflare Worker URL here (no trailing slash).
 // ---- Cloudflare Worker proxy URL (baked in, ready to deploy) ----
@@ -298,6 +847,10 @@ var T = {
                en:'IOD = the east–west sea-temperature gradient across the Indian Ocean. It directly affects Malaysian rainfall, especially the eastern side (near Sumatra). From BOM, updated weekly.'},
   iodLatest:  {zh:'最新值 (IOD)', en:'Latest (IOD)'},
   iodSrc:     {zh:'数据来源', en:'Source'},
+  iodMonthlyNote:{zh:'ℹ️ BOM 本周没有公布 IOD 数值，所以这里显示的是备用的【月度】DMI（NOAA PSL，HadISST），月份：{m}。月度值本来就会落后一到两个月，适合看季节方向，不适合当作「本周」的依据。',
+                  en:'ℹ️ BOM published no IOD figure this week, so this is the fallback MONTHLY DMI (NOAA PSL, HadISST) for {m}. A monthly value naturally runs one to two months behind — useful for the seasonal direction, not as a reading for this week.'},
+  iodAgedMon: {zh:'⚠️ 月度 DMI 的最新月份为 {m}，已超过月度源的正常延迟。数值仍列出供参考，但不据此给出农事建议。',
+               en:'⚠️ The newest monthly DMI is {m}, which is beyond even the normal lag for a monthly source. The value is shown for reference only — no farm advice is drawn from it.'},
   iodFail:    {zh:'IOD 数值暂时无法取得。这通常只是数据源 (BOM) 改了网页措辞，属于正常情况——为避免误导，这里不显示过期或猜测的数值。厄尔尼诺数据照常运作。详情见上方 ⓘ 说明。',
                en:'IOD value temporarily unavailable. This usually just means the data source (BOM) reworded their page — it\'s expected. To avoid misleading you, no stale or guessed value is shown. The El Niño data is unaffected. See the ⓘ guide for details.'},
   iodPrev:    {zh:'上一月', en:'Previous month'},
@@ -449,8 +1002,6 @@ var T = {
   week:       {zh:'当周', en:'This week'},
   weekAgo:    {zh:'一周前', en:'Week ago'},
   nino34:     {zh:'Niño 3.4', en:'Niño 3.4'},
-  nino4:      {zh:'Niño 4', en:'Niño 4'},
-  nino3:      {zh:'Niño 3', en:'Niño 3'},
   weak:       {zh:'弱', en:'Weak'},
   moderate:   {zh:'中等', en:'Moderate'},
   strong:     {zh:'强', en:'Strong'},
@@ -481,8 +1032,8 @@ var T = {
                 en:'What is "anomaly"? = the difference from normal, NOT the actual water temperature. E.g. sea = 29°C, anomaly = +1.7 means "1.7 degrees warmer than this patch\u2019s usual average for this season". Plus = warmer than normal (El Niño direction); minus = cooler than normal (La Niña direction); near 0 = normal. Note: minus means "cooler than normal", not that the water is actually cold — the Pacific is always warm. "Normal" is the 30-year (1991–2020) average, which is why the new file is called "9120".'},
   helpSeason:  {zh:'像 MAM、FMA 这种 = 三个月一组，用每个月的英文首字母。MAM = 三月-四月-五月（Mar-Apr-May），FMA = 二月-三月-四月（Feb-Mar-Apr）。每过一个月就往前推一格，所以差不多每月有一个新数字。',
                en:'Labels like MAM, FMA = a group of 3 months, using each month\u2019s first letter. MAM = Mar-Apr-May, FMA = Feb-Mar-Apr. It slides forward one month at a time, so there\u2019s a new value about every month.'},
-  helpWhat34:  {zh:'Niño 3.4 = 太平洋赤道上 一块固定海域 的名字（在国际换日线附近，离马来西亚很远）。科学家选它，是因为它的海温最能反映厄尔尼诺／拉尼娜。旁边的数字不是实际水温，而是 比正常高或低几度。RONI 和「每周 Niño 3.4」看的是同一块海，只是 RONI 是三个月平均（慢、稳），每周值是最新一周（快、跳动）。',
-               en:'Niño 3.4 = the name of a fixed patch of ocean on the equator in the central Pacific (near the date line, far from Malaysia). Scientists use it because its sea temperature best reflects El Niño / La Niña. The number beside it is NOT the actual water temperature — it\u2019s how many degrees above or below normal. RONI and "Weekly Niño 3.4" read the same patch: RONI is a 3-month average (slow, steady), the weekly is the latest single week (fast, jumpy).'},
+  helpWhat34:  {zh:'Niño 3.4 = 太平洋赤道上 一块固定海域 的名字（在国际换日线附近，离马来西亚很远）。科学家选它，是因为它的海温最能反映厄尔尼诺／拉尼娜。旁边的数字不是实际水温，而是 比正常高或低几度。RONI 和「每周 Niño 3.4」看的是同一块海，但不是同一个算法：RONI 会先减去整个热带海洋（20°S–20°N）的平均升温，再取三个月平均（慢、稳、已扣除全球变暖）；每周值是最新一周的原始距平，什么都没扣（快、跳动、数字偏大）。所以两者在厉尔尼诺期间会差得很明显，这是正常的。',
+               en:'Niño 3.4 = the name of a fixed patch of ocean on the equator in the central Pacific (near the date line, far from Malaysia). Scientists use it because its sea temperature best reflects El Niño / La Niña. The number beside it is NOT the actual water temperature — it\u2019s how many degrees above or below normal. RONI and "Weekly Niño 3.4" read the same patch of ocean but are not the same calculation: RONI first subtracts the average warming of the whole tropical ocean (20°S–20°N) and then averages three months (slow, steady, global warming removed); the weekly is the raw anomaly for the latest single week with nothing subtracted (fast, jumpy, and a bigger number). During El Niño the two will differ noticeably — that is expected.'},
   helpWalker: {zh:'❓ 那么远的海（约 12,500 公里外）怎么会影响我们？靠的是一条横跨太平洋的空气大环流——「沃克环流 (Walker Circulation)」。平常，我们旁边（印尼、马来西亚一带）的海最暖，暖海把空气加热、上升成云致雨——这是我们头顶的「湿引擎」。厄尔尼诺时，这块暖水东移到中太平洋，上升致雨的区域也跟着东移、离开我们；而空气环流是一个闭环：一头上升，另一头就要下沉。上升区东移后，下沉的一头正好压在马来西亚上方——下沉气流是干的，抑制成云，于是我们偏干。所以不是热「传」过来，而是我们和中太平洋是同一个跷跷板的两端：那头升（湿），我们这头就降（干）。拉尼娜则相反，我们偏湿。这种「远隔相关」叫 teleconnection。',
                en:'❓ How can an ocean that far away (~12,500 km) affect us? Through a giant loop of air spanning the Pacific — the Walker Circulation. Normally the ocean right beside us (around Indonesia and Malaysia) is the warmest; that warm water heats the air, which rises into clouds and rain — our overhead "wet engine." During El Niño, that warm pool shifts east to the central Pacific, and the rising, rainy zone follows it away from us. But the air loop is closed: where it rises on one side, it must sink on the other. With the rising branch shifted east, the sinking branch lands right over Malaysia — and sinking air is dry, suppressing clouds, so we lean drier. It isn\u2019t that heat travels here; it\u2019s that we and the central Pacific are two ends of the same see-saw: their end goes up (wet), our end goes down (dry). La Niña is the reverse — wetter for us. This link across distance is called a teleconnection.'},
   walkerTitle:{zh:'沃克环流：厄尔尼诺时为何我们偏干', en:'Walker Circulation: why El Niño leaves us drier'},
@@ -493,20 +1044,47 @@ var T = {
   walkerWarm: {zh:'暖海东移 →', en:'warm water shifts east →'},
   walkerNormalNote:{zh:'平常（非厄尔尼诺）：暖海在我们这侧，上升致雨在马来西亚上方——我们偏湿。',
                en:'Normal (non-El Niño): the warm water is on our side and the rising, rainy branch sits over Malaysia — we lean wetter.'},
-  helpRoni:    {zh:'RONI = NOAA 官方采用的「相对海洋尼诺指数」，每月更新一次，看的是 整个季节的平均。这是判断大趋势的主指标。',
-               en:'RONI = NOAA\u2019s official "Relative Oceanic Niño Index", updated monthly, based on a whole season\u2019s average. This is the main indicator for the big trend.'},
+  helpRoni:    {zh:'RONI =「相对海洋尼诺指数」，NOAA 自 2026 年 2 月起的官方指标，取三个月平均、每月更新。判断大趋势看它；因为是季平均，它比现实慢约 6 周。详情见 ⓘ 说明。',
+               en:'RONI = the Relative Oceanic Niño Index, NOAA official index since February 2026. A three-month mean, updated monthly. Read it for the big trend; because it is a seasonal average it runs about six weeks behind the present. Full explanation in the ⓘ guide.'},
+  helpRoniWhy: {zh:'🌊 为什么是 RONI 而不是 ONI？整个热带海洋都在变暖。旧的 ONI 拿太平洋的海温和 30 年平均相比，于是把这份全球增温也算进了厉尔尼诺的强度里 —— 厉尔尼诺看起来偏强，拉尼娜看起来偏弱。RONI 先减去整个热带（20°S–20°N）的平均距平，只留下太平洋自己的异常 —— 而风与雨真正回应的正是这一部分。NOAA 气候预测中心（CPC）已于 2026 年 2 月改用 RONI 作为官方指标，澳洲 BOM 也在 2025 年 9 月做了同样的切换。代价是反应慢：它取三个月平均、每月才发一次，事件正在发展时一定会低估当下。所以看「现在」要把三样一起读：RONI（季节）、每周 Niño 3.4（最快）、以及 NOAA 官方展望（前瞻）。',
+               en:'🌊 Why RONI and not ONI? The whole tropical ocean is warming. The old ONI compared Pacific sea temperature against a 30-year average, so that global warming got counted as El Niño strength — El Niños looked stronger and La Niñas weaker than the atmosphere actually felt them. RONI subtracts the tropical-wide (20°S–20°N) average first, leaving only the Pacific own anomaly — and that is the part the winds and rain respond to. NOAA Climate Prediction Center adopted RONI as its official index in February 2026, and Australia BOM made the same switch in September 2025. The cost is speed: it is a three-month mean published monthly, so while an event is developing it will always understate the present. Read three things together for the present: RONI (the season), the weekly Niño 3.4 (the fastest), and the NOAA outlook (what is ahead).'},
   mapTitle:   {zh:'四个监测海域（由西到东）', en:'The four monitoring boxes (west to east)'},
-  mapWest:    {zh:'西', en:'West'},
-  mapEast:    {zh:'东', en:'East'},
-  mapN4:      {zh:'中部，最靠近亚洲', en:'central, nearest Asia'},
-  mapN34sub:  {zh:'主指标', en:'the main one'},
-  mapN3:      {zh:'东太平洋', en:'eastern Pacific'},
-  mapN12:     {zh:'近岸', en:'coast'},
+  mapCardTitle:{zh:'监测海域地图', en:'Monitoring-region map'},
+  mapCardHint:{zh:'NOAA CPC 每周监测这四个海域的海面温度距平。方框按真实经纬度投影，边界贴着球面而不是横切过去。颜色为该海域本周的距平：红＝偏暖，蓝＝偏冷。可拖动旋转。',
+               en:'NOAA CPC tracks the sea-surface temperature anomaly in these four boxes every week. The boxes are drawn in true coordinates and their edges follow the sphere rather than cutting across it. Colour is this week\u2019s anomaly: red = warmer, blue = cooler. Drag to rotate.'},
+  mapViewPac: {zh:'太平洋', en:'Pacific'},
+  mapViewMY:  {zh:'马来西亚', en:'Malaysia'},
+  mapDragHint:{zh:'拖动旋转 · 滚轮／双指缩放', en:'drag to rotate · wheel/pinch to zoom'},
+  mapZoomIn:  {zh:'放大', en:'Zoom in'},
+  mapZoomOut: {zh:'缩小', en:'Zoom out'},
+  wkChange:   {zh:'较上周', en:'Change vs last week'},
+  wkTrendLbl: {zh:'近 12 周 Niño 3.4 走势', en:'Niño 3.4, last 12 weeks'},
+  wkRegionsMoved:{zh:'Niño 1+2 / 3 / 4 的本周数值见下方地图卡，不在这里重复。',
+                  en:'Niño 1+2 / 3 / 4 for this week are on the map card below, not repeated here.'},
+  wkSame:     {zh:'持平', en:'no change'},
+  // --- hero: the lag, and the direction of travel ---
+  heroLag:    {zh:'RONI 是三个月平均值，上面这个数字描述的是 {s}，比今天落后约 6 周。事件正在发展时，它一定会低估当下。最新一周的 Niño 3.4 见下方。',
+               en:'RONI is a three-month mean, so the number above describes {s} — roughly six weeks behind today. While an event is developing it will always understate the present. The latest weekly Niño 3.4 is below.'},
+  strengthening:{zh:'正在增强', en:'strengthening'},
+  weakening:  {zh:'正在减弱', en:'weakening'},
+  heroAdvisory:{zh:'NOAA 最新公告：', en:'Latest NOAA bulletin: '},
+  wkVsRoni:   {zh:'为什么和上面的 RONI 不同？两者看同一片海，但 RONI 会先减去整个热带海洋的平均升温，再取三个月平均；这里的每周值是未扣除的原始距平，而且只有一周。所以厉尔尼诺期间，这个数字通常明显高于 RONI —— 两个都对，量的是不同的东西。',
+               en:'Why does this differ from the RONI above? Both read the same patch of ocean, but RONI first subtracts the warming of the whole tropical ocean and then averages three months; this weekly figure is the raw anomaly for a single week, with nothing subtracted. During El Niño it therefore usually sits well above RONI. Both are correct — they measure different things.'},
+  iodNeutralNoVal:{zh:'BOM 目前报 IOD 为中性，并未公布具体数值（他们通常只在事件发生时才给出数字）。这不是抓取失败 —— 数据源就是这样写的。最新说明日期：{d}。',
+                   en:'BOM currently reports the IOD as neutral and publishes no figure (they usually only quote a number while an event is running). This is not a scrape failure — it is what the source says. Source statement dated: {d}.'},
+  mapLegWarm: {zh:'偏暖（厄尔尼诺方向）', en:'warmer (El Niño direction)'},
+  mapLegCool: {zh:'偏冷（拉尼娜方向）', en:'cooler (La Niña direction)'},
+  mapLeg34:   {zh:'Niño 3.4（主指标，只描边）', en:'Niño 3.4 (main index, outline only)'},
+  map34Note:  {zh:'Niño 3.4 横跨 Niño 3 与 Niño 4，所以只画边框不上色——在重叠区上色会混出一个并不存在的数值。它的读数见上方卡片。',
+               en:'Niño 3.4 straddles Niño 3 and Niño 4, so it is outlined rather than filled — tinting the overlap would blend a colour that no instrument measured. Its reading is on the card above.'},
+  mapStaleNote:{zh:'⚠️ 每周数据已过期，方框不上色。过期的颜色会看起来像「现在的情况」，因此宁可留白。',
+               en:'⚠️ The weekly data is out of date, so the boxes are left uncoloured. A stale tint would read as \u201Cright now\u201D, so it is withheld.'},
+  mapNoData:  {zh:'尚无每周数据，方框不上色。', en:'No weekly data yet, so the boxes are uncoloured.'},
+  mapProj:    {zh:'投影：O＝正射（地球仪）· E＝等距圆柱 · W3＝温克尔三重（earth.nullschool.net 的默认投影）',
+               en:'Projections: O = orthographic globe · E = equirectangular · W3 = Winkel tripel (the one earth.nullschool.net defaults to)'},
   mapMY:      {zh:'马来西亚 / 你的果园', en:'Malaysia / your orchard'},
   mapMYsub:   {zh:'最西端 — 厄尔尼诺时这里通常偏干', en:'far west — El Niño tends to be drier here'},
   mapSA:      {zh:'南美洲', en:'S. America'},
-  mapFoot:    {zh:'Niño 3.4 跨在 Niño 3 与 Niño 4 之间 — 所以叫「3.4」',
-               en:'Niño 3.4 straddles Niño 3 and Niño 4 — that\u2019s why it\u2019s "3.4"'},
   helpWeekly:  {zh:'每周 Niño 3.4 = 同一片海域的 最新一周温度，更新更快。可以看最近是在升温还是降温。',
                 en:'Weekly Niño 3.4 = the latest week\u2019s temperature of the same ocean patch, updated faster. Shows whether things are warming or cooling lately.'},
   helpTrend:   {zh:'趋势图 = 过去两年逐季的变化。中线＝0：向上为暖（厄尔尼诺方向），向下为冷（拉尼娜方向）。红柱=厄尔尼诺，蓝柱=拉尼娜，灰柱=中性。',
@@ -632,19 +1210,22 @@ function parseWeekly(text){
     var nums = rest.match(/-?\d+\.?\d*/g);
     if (!nums) continue;
     nums = nums.map(parseFloat);
-    var n3, n34, n4;
+    var n12, n3, n34, n4;
     if (nums.length >= 8){
       // Format A: 4 region SST+anomaly pairs; anomalies at odd indices.
-      n3 = nums[3]; n34 = nums[5]; n4 = nums[7];
+      // Column order in wksst9120.for is 1+2, 3, 3.4, 4 -- NOT the order used
+      // by the monthly ERSST file (1+2, 3, 4, 3.4). Do not "tidy" this.
+      n12 = nums[1]; n3 = nums[3]; n34 = nums[5]; n4 = nums[7];
     } else if (nums.length >= 4){
       // Format B: 4 anomalies only, in region order n12,n3,n34,n4.
-      n3 = nums[1]; n34 = nums[2]; n4 = nums[3];
+      n12 = nums[0]; n3 = nums[1]; n34 = nums[2]; n4 = nums[3];
     } else {
       continue; // not a valid data row
     }
     rows.push({
       date:   date,
       ts:     weekTs(date),          // sortable timestamp
+      nino12: n12,
       nino3:  n3,
       nino34: n34,
       nino4:  n4,
@@ -821,14 +1402,35 @@ function seasonPlain(code){
 // shows a clear "needs updating" notice instead of any stale/guessed number
 // and instead of any rainfall advice. Returns '' only when there's no IOD
 // object at all (e.g. very first load offline with no cache).
+// Fall back from BoM's weekly figure to the monthly DMI chain.
+// The monthly value is NEVER silently substituted: it is flagged monthly:true
+// so the card labels it, states its month, and judges its age on a monthly
+// yardstick instead of a weekly one.
+function withMonthlyIod(iod, dmiText){
+  if (iod && iod.ok === true && typeof iod.value === 'number') return iod;
+  var m = parseDmiMonthly(dmiText);
+  if (!m) return iod;
+  return { ok:true, value:m.value, asOf:m.asOf, ym:m.ym, monthly:true,
+           bom:(iod && iod.neutral) ? 'neutral' : (iod && iod.reason) || null };
+}
+
 function iodCard(iod){
   if (!iod) return '';
   // --- Failure guard: scrape broke (regex missed, BOM down, etc.) ---
   if (!iod.ok || typeof iod.value !== 'number') {
+    // Two situations, two messages. "BOM says neutral" is routine reporting;
+    // "the scrape broke" needs attention. Both still show no number and give no
+    // farm advice -- but only one of them is a fault. The neutral notice needs
+    // a date we can age-check: an undated "neutral" could be a year old, so
+    // without one we fall back to the loud failure.
+    var neutralOk = iod.neutral && iod.asOf && bomDateTs(iod.asOf) > 0
+                    && (Date.now() - bomDateTs(iod.asOf)) <= 35*24*3600*1000;
     return '<div class="card">'
       +'<div class="cardtitle"><span class="dot"></span>'+tr('iodTitle')+'</div>'
       +'<div class="cardhint">'+tr('iodHint')+'</div>'
-      +'<div class="iodfail">'+tr('iodFail')+'</div>'
+      +(neutralOk
+        ? '<div class="iodneutral">'+tr('iodNeutralNoVal').replace('{d}', iod.asOf)+'</div>'
+        : '<div class="iodfail">'+tr('iodFail')+'</div>')
     +'</div>';
   }
   var v = iod.value;
@@ -838,7 +1440,12 @@ function iodCard(iod){
   var badgeCls = p==='pos' ? 'phase-warm' : p==='neg' ? 'phase-cool' : 'phase-neutral';
   var col = p==='pos' ? 'var(--warm)' : p==='neg' ? 'var(--cool)' : 'var(--ink)';
   var asOfTs = iod.asOf ? bomDateTs(iod.asOf) : 0;
-  var tooOld = asOfTs > 0 && (Date.now() - asOfTs) > 35*24*3600*1000;
+  // A monthly index is EXPECTED to sit a month or two back -- PSL runs about
+  // two to three months behind. Judging it by the weekly 35-day rule would
+  // permanently mislabel a perfectly normal monthly value as stale, so the
+  // yardstick follows the source.
+  var maxAge = iod.monthly ? 75 : 35;
+  var tooOld = asOfTs > 0 && (Date.now() - asOfTs) > maxAge*24*3600*1000;
   var asOfTxt = iod.asOf ? iod.asOf : '';
 
   var html = '<div class="card">'
@@ -852,10 +1459,12 @@ function iodCard(iod){
   if (tooOld) {
     // Value present but the source date is stale — flag it (advice withheld
     // in the orchard card too).
-    html += '<div class="iodage">'+tr('iodAged').replace('{m}', asOfTxt)+'</div>';
+    html += '<div class="iodage">'+tr(iod.monthly?'iodAgedMon':'iodAged').replace('{m}', asOfTxt)+'</div>';
   }
   html += '<div class="row" style="margin-top:8px"><span class="k">'+tr('iodLatest')+'</span><span class="v '+pClass+'">'+(asOfTxt?asOfTxt+' · ':'')+fmt(v)+'</span></div>'
-    +'<div class="row"><span class="k">'+tr('iodSrc')+'</span><span class="v iodsrc">BOM</span></div>'
+    +'<div class="row"><span class="k">'+tr('iodSrc')+'</span><span class="v iodsrc">'
+      +(iod.monthly ? 'NOAA PSL' : 'BOM')+'</span></div>'
+    +(iod.monthly ? '<div class="iodneutral">'+tr('iodMonthlyNote').replace('{m}', iod.ym||asOfTxt)+'</div>' : '')
   +'</div>';
   return html;
 }
@@ -864,7 +1473,8 @@ function iodCard(iod){
 function iodFarmLine(iod){
   if (!iod || !iod.ok || typeof iod.value !== 'number') return '';
   var asOfTs = iod.asOf ? bomDateTs(iod.asOf) : 0;
-  if (asOfTs > 0 && (Date.now() - asOfTs) > 35*24*3600*1000) return ''; // stale
+  var maxAge = iod.monthly ? 75 : 35;   // see iodCard: monthly runs further back
+  if (asOfTs > 0 && (Date.now() - asOfTs) > maxAge*24*3600*1000) return ''; // stale
   var p = iodPhaseOf(iod.value);
   return p==='pos' ? tr('iodFarmPos') : p==='neg' ? tr('iodFarmNeg') : tr('iodFarmNeu');
 }
@@ -1021,45 +1631,10 @@ function monsoonFarmLine(mon){
 
 // Inline SVG map of the four Nino regions, west->east, with Malaysia marked.
 // Pure SVG so it works offline. viewBox scales to the card width on phone.
-function ninoMap(){  var t = function(k){ return tr(k); };
-  return ''
-  +'<svg viewBox="0 0 360 250" class="ninomap" role="img" aria-label="Niño regions map">'
-    // ocean strip
-    +'<rect x="6" y="70" width="348" height="86" rx="7" fill="#e0f2fe" stroke="#7dd3fc" stroke-width="1"/>'
-    // equator
-    +'<line x1="6" y1="113" x2="354" y2="113" stroke="#0284c7" stroke-width="1" stroke-dasharray="3 3" opacity="0.6"/>'
-    +'<text x="30" y="129" font-size="8" fill="#0369a1">'+ (LANG==='zh'?'赤道':'Equator') +'</text>'
-    // west / east end caps
-    +'<rect x="6" y="86" width="20" height="54" rx="3" fill="#e2e8f0" stroke="#cbd5e1" stroke-width="1"/>'
-    +'<text x="16" y="64" font-size="9" fill="#64748b" text-anchor="middle">'+t('mapWest')+'</text>'
-    +'<rect x="334" y="86" width="20" height="54" rx="3" fill="#e2e8f0" stroke="#cbd5e1" stroke-width="1"/>'
-    +'<text x="344" y="64" font-size="9" fill="#64748b" text-anchor="middle">'+t('mapEast')+'</text>'
-    // Nino 4 (central, teal-ish)
-    +'<rect x="70" y="86" width="88" height="30" rx="4" fill="#ccfbf1" stroke="#5eead4" stroke-width="1"/>'
-    +'<text x="114" y="99" font-size="10" font-weight="bold" fill="#0f766e" text-anchor="middle">Niño 4</text>'
-    +'<text x="114" y="111" font-size="7.5" fill="#0f766e" text-anchor="middle">'+t('mapN4')+'</text>'
-    // Nino 3 (eastern, coral) - lower row
-    +'<rect x="205" y="124" width="108" height="28" rx="4" fill="#fee2d5" stroke="#fdba8c" stroke-width="1"/>'
-    +'<text x="259" y="137" font-size="10" font-weight="bold" fill="#9a3412" text-anchor="middle">Niño 3</text>'
-    +'<text x="259" y="148" font-size="7.5" fill="#9a3412" text-anchor="middle">'+t('mapN3')+'</text>'
-    // Nino 3.4 (the star, amber, emphasized) - overlaps 3 and 4
-    +'<rect x="158" y="90" width="112" height="34" rx="4" fill="#fef3c7" stroke="#f59e0b" stroke-width="2"/>'
-    +'<text x="214" y="104" font-size="10.5" font-weight="bold" fill="#92400e" text-anchor="middle">Niño 3.4 ★</text>'
-    +'<text x="214" y="116" font-size="7.5" fill="#92400e" text-anchor="middle">'+t('mapN34sub')+'</text>'
-    // Nino 1+2 (small, pink, far east)
-    +'<rect x="316" y="86" width="34" height="30" rx="3" fill="#fce7f0" stroke="#f0abc8" stroke-width="1"/>'
-    +'<text x="333" y="99" font-size="9" font-weight="bold" fill="#9d174d" text-anchor="middle">1+2</text>'
-    +'<text x="333" y="110" font-size="7" fill="#9d174d" text-anchor="middle">'+t('mapN12')+'</text>'
-    // Malaysia marker (west)
-    +'<circle cx="16" cy="180" r="5" fill="#0f766e"/>'
-    +'<text x="26" y="177" font-size="9" font-weight="bold" fill="#0f766e">'+t('mapMY')+'</text>'
-    +'<text x="26" y="190" font-size="7.5" fill="#475569">'+t('mapMYsub')+'</text>'
-    // South America marker (east)
-    +'<circle cx="344" cy="210" r="5" fill="#9a3412"/>'
-    +'<text x="336" y="207" font-size="9" font-weight="bold" fill="#9a3412" text-anchor="end">'+t('mapSA')+'</text>'
-    // footnote
-    +'<text x="180" y="238" font-size="8" fill="#854d0e" text-anchor="middle">★ '+t('mapFoot')+'</text>'
-  +'</svg>';
+// The Niño-region map. The real projected canvas lives in NinoMap (top of file);
+// this just emits its markup. Mounted by openHelp() once the HTML is in the DOM.
+function ninoMap(){
+  return NinoMap.markup('help');
 }
 
 // Cross-section of the equatorial Pacific showing the Walker Circulation in the
@@ -1411,13 +1986,18 @@ function load(){
   // fetched directly (not via the Worker). Also a bonus — null on failure.
   var monFeed = fetchMonsoon().catch(function(){ return null; });
   var outFeed = getFeed('outlook').catch(function(){ return null; });
-  Promise.all([ getFeed('roni'), getFeed('weekly'), iodFeed, mjoFeed, monFeed, outFeed ])
+  // Monthly DMI: only ever used if BoM has no weekly figure. Bonus feed, so a
+  // failure resolves to null rather than taking the whole load down.
+  var dmiFeed = getFeed('dmimon').catch(function(){ return null; });
+  Promise.all([ getFeed('roni'), getFeed('weekly'), iodFeed, mjoFeed, monFeed, outFeed, dmiFeed ])
     .then(function(res){
       var roni = parseSeasonal(res[0], 2);   // RONI anom in col 2
       var weekly = parseWeekly(res[1]);
       if (!roni.length || !weekly.length) throw new Error('empty parse');
       // IOD comes back as JSON {ok,value,asOf} from the Worker's BOM scrape.
-      var iod = parseIod(res[2]);
+      // BoM weekly first; the monthly chain only fills in when BoM gives us
+      // no usable figure (event over, wording changed, Worker down).
+      var iod = withMonthlyIod(parseIod(res[2]), res[6]);
       var mjo = parseMJO(res[3]);
       var mon = res[4]; // already a computed object (or null)
       var out = parseOutlook(res[5]);
@@ -1425,7 +2005,7 @@ function load(){
       try {
         localStorage.setItem('enso-cache', JSON.stringify({
           roni: res[0], weekly: res[1], iod: res[2] || '', mjo: res[3] || '',
-          mon: mon || null, out: res[5] || '', at: Date.now()
+          mon: mon || null, out: res[5] || '', dmimon: res[6] || '', at: Date.now()
         }));
       } catch(e){ /* storage full or blocked — ignore */ }
       render(roni, weekly, null, iod, mjo, mon, out);
@@ -1437,7 +2017,7 @@ function load(){
       if (raw && raw.roni && raw.weekly) {
         var roni = parseSeasonal(raw.roni, 2);
         var weekly = parseWeekly(raw.weekly);
-        var iod = parseIod(raw.iod);
+        var iod = withMonthlyIod(parseIod(raw.iod), raw.dmimon);
         var mjo = parseMJO(raw.mjo);
         var out = parseOutlook(raw.out);
         if (roni.length && weekly.length) { render(roni, weekly, raw.at, iod, mjo, raw.mon||null, out); return; }
@@ -1447,12 +2027,54 @@ function load(){
 }
 // Parse the Worker's IOD JSON. Returns {ok,value,asOf} on success, or
 // {ok:false} on any problem — the card uses ok:false to show a loud notice.
+// Monthly DMI parser. Handles BOTH shapes the Worker's dmimon chain can
+// return: PSL CSV rows (YYYY-MM-01, value) and the PSL standard format
+// (year followed by 12 monthly values). -9999 is the missing flag; PSL pads
+// the rest of the current year with it, so "last row" is not "last value".
+// Ported from SUHU's latestMonthly(), widened for the CSV shape.
+function parseDmiMonthly(text){
+  if (!text || text.charAt(0) === '{') return null;   // 502 JSON, not data
+  var best = null, lines = String(text).replace(/<[^>]+>/g,' ').split(/\r?\n/);
+  function keep(y, m, v){
+    if (!isFinite(v) || v <= -90 || v >= 90) return;   // missing flag
+    if (!best || y > best.year || (y === best.year && m > best.month))
+      best = { year:y, month:m, value:v };
+  }
+  for (var i=0;i<lines.length;i++){
+    var ln = lines[i].trim();
+    if (!ln) continue;
+    var csv = ln.match(/^(\d{4})-(\d{2})-\d{2}\s*,\s*(-?\d+(?:\.\d+)?)/);
+    if (csv){ keep(+csv[1], +csv[2], parseFloat(csv[3])); continue; }
+    var toks = ln.split(/\s+/).map(Number);
+    if (toks.length < 2) continue;
+    var yr = toks[0];
+    if (!Number.isInteger(yr) || yr < 1870 || yr > 2100) continue;
+    toks.slice(1,13).forEach(function(v,k){ keep(yr, k+1, v); });
+  }
+  if (!best) return null;
+  var MN = ['January','February','March','April','May','June','July',
+            'August','September','October','November','December'];
+  return {
+    value: best.value,
+    ym: best.year + '-' + (best.month<10?'0':'') + best.month,
+    // Dated mid-month so the existing bomDateTs()/age machinery works unchanged.
+    asOf: '15 ' + MN[best.month-1] + ' ' + best.year
+  };
+}
+
 function parseIod(text){
   if (!text) return { ok:false };
   try {
     var o = (typeof text === 'string') ? JSON.parse(text) : text;
     if (o && o.ok === true && typeof o.value === 'number') {
       return { ok:true, value:o.value, asOf:o.asOf || null };
+    }
+    // BOM only quotes a figure while an IOD event is running. When they say
+    // "neutral" in prose with no number, that is the source reporting normally
+    // -- not our regex breaking. The Worker distinguishes the two; carry the
+    // distinction through so the card can say which one happened.
+    if (o && o.neutral === true) {
+      return { ok:false, neutral:true, asOf:o.asOf || null, reason:'neutral, no figure' };
     }
     return { ok:false, reason:(o && o.reason) || 'no data' };
   } catch(e){ return { ok:false, reason:'bad json' }; }
@@ -1494,6 +2116,26 @@ function outlookStatusLabel(status){
 }
 
 /* ===================== RENDER ===================== */
+// Four small value cells under the map, in CPC's own column order.
+// A value is printed only when the weekly row passed the staleness check --
+// the map tint and these cells are driven by the same gate, so they cannot
+// tell different stories.
+function regionCells(wk, stale){
+  var defs = [
+    {id:'1+2', v:wk.nino12}, {id:'3', v:wk.nino3},
+    {id:'3.4', v:wk.nino34, key:true}, {id:'4', v:wk.nino4}
+  ];
+  return defs.map(function(d){
+    var has = !stale && typeof d.v === 'number' && isFinite(d.v);
+    var cls = has ? phaseOf(d.v) : '';
+    var col = cls==='warm' ? '#dc2626' : cls==='cool' ? '#2563eb' : '#0f172a';
+    return '<div class="nreg'+(d.key?' key':'')+'">'
+      +'<div class="rk">Niño '+d.id+'</div>'
+      +'<div class="rv'+(has?'':' na')+'"'+(has?' style="color:'+col+'"':'')+'>'
+      + (has ? fmt(d.v) : '\u2014') +'</div></div>';
+  }).join('');
+}
+
 function render(roni, weekly, cachedAt, iod, mjo, mon, out){
   var latest = roni[roni.length-1];
   var prev   = roni[roni.length-2] || latest;
@@ -1522,11 +2164,61 @@ function render(roni, weekly, cachedAt, iod, mjo, mon, out){
   // so we can tell a bad feed (few/old rows) from an app bug.
   var wkDebug = weekly.length + ' rows · ' + weekly[0].date + ' → ' + wkLatest.date;
 
+  // Week-on-week change in Niño 3.4 -- the thing this card exists to show.
+  // Withheld entirely when the feed is stale: a delta between two old rows is
+  // a real number about the wrong fortnight.
+  var wkDelta = wkLatest.nino34 - wkPrev.nino34;
+  var wkDeltaTxt, wkDeltaCol;
+  if (wkStale){
+    wkDeltaTxt = '—'; wkDeltaCol = '#94a3b8';
+  } else if (Math.abs(wkDelta) < 0.05){
+    wkDeltaTxt = tr('wkSame'); wkDeltaCol = '#475569';
+  } else {
+    wkDeltaTxt = (wkDelta>0 ? '▲ +' : '▼ −')
+               + Math.abs(wkDelta).toFixed(2) + '°C';
+    wkDeltaCol = wkDelta>0 ? '#dc2626' : '#2563eb';
+  }
+  // Last 12 weekly rows as a small spark, same bar geometry as the seasonal one.
+  // Greyed out rather than hidden when stale, so the shape still reads but no
+  // bar claims to be a current warm/cool signal.
+  var wkHist = weekly.slice(-12);
+  var wkMax = Math.max(1.0, Math.max.apply(null, wkHist.map(function(h){
+                return Math.abs(h.nino34); })));
+  var wkBars = wkHist.map(function(h){
+    var hpx = Math.max(2, Math.round(Math.abs(h.nino34)/wkMax*22));
+    var col = wkStale ? '#cbd5e1'
+            : h.nino34>=THRESH ? '#dc2626'
+            : h.nino34<=-THRESH ? '#2563eb' : '#cbd5e1';
+    return '<div class="bar-cell"><div class="bar '+(h.nino34>=0?'up':'dn')
+      +'" style="height:'+hpx+'px;background:'+col+'" title="'+h.date+': '
+      +fmt(h.nino34)+'"></div></div>';
+  }).join('') + '<div class="zeroline"></div>';
+  var wkAxis = wkHist.map(function(h,i){
+    return '<span>'+(i%3===0 ? '<b>'+h.date.slice(0,5)+'</b>' : '')+'</span>';
+  }).join('');
+
+  // ---- Direction of travel ------------------------------------------------
+  // RONI is a 3-month mean published monthly, so the headline necessarily lags
+  // the present by ~6 weeks. During onset it reads "weak" while the event is
+  // already past that. We qualify it, but ONLY from like-for-like comparisons:
+  // t3 is RONI against RONI, wkDelta is weekly against weekly. The two indices
+  // are never differenced against each other -- RONI subtracts the tropical
+  // mean and the weekly value does not, so the gap between them is a units
+  // difference, not a measure of lag. Both trends must agree, or we say nothing.
+  var momentum = null;
+  if (!wkStale && strength){
+    var bothUp   = (t3 === 'rising'  && wkDelta >  0.05);
+    var bothDown = (t3 === 'falling' && wkDelta < -0.05);
+    if (phase === 'warm') momentum = bothUp ? 'strengthening' : bothDown ? 'weakening' : null;
+    if (phase === 'cool') momentum = bothDown ? 'strengthening' : bothUp ? 'weakening' : null;
+  }
+
   var phaseClass = 'phase-'+phase;
   var phaseLabel = phase==='warm'?tr('elnino'):phase==='cool'?tr('lanina'):tr('neutral');
   var phaseCond  = phase==='warm'?tr('elninoCond'):phase==='cool'?tr('laninaCond'):tr('neutralCond');
   var vClass = phase==='warm'?'warm':phase==='cool'?'cool':'neutral';
   var strengthTxt = strength ? tr(strength)+' · '+phaseLabel : tr('neutral');
+  if (momentum) strengthTxt += (LANG==='zh' ? '（'+tr(momentum)+'）' : ' · '+tr(momentum));
   var farmKey = phase==='warm'?'farmWarm':phase==='cool'?'farmCool':'farmNeutral';
 
   // Live, data-driven "right now" sentence (observed state only).
@@ -1567,6 +2259,11 @@ function render(roni, weekly, cachedAt, iod, mjo, mon, out){
     +'<div class="anomunit">'+tr('anomUnit')+'</div>'
     +(strength?'<div class="strength" style="color:'+(phase==='warm'?'var(--warm)':'var(--cool)')+'">'+strengthTxt+'</div>':'')
     +'<div class="phase-desc">RONI · '+latest.seas+' '+latest.yr+' <span class="seas-plain">('+seasonPlain(latest.seas)+')</span></div>'
+    +'<div class="herolag">'+tr('heroLag').replace('{s}', latest.seas+' '+latest.yr+' ('+seasonPlain(latest.seas)+')')+'</div>'
+    +(out && out.status
+        ? '<div class="heroadv">'+tr('heroAdvisory')+'<b>'+outlookStatusLabel(out.status)+'</b>'
+          +(out.issued?' <span class="outdate">('+out.issued+')</span>':'')+'</div>'
+        : '')
     +'<div class="verdict '+verdict.cls+'"><span class="verdict-i">'+verdict.icon+'</span>'+verdict.text+'</div>'
   +'</div>'
 
@@ -1594,9 +2291,29 @@ function render(roni, weekly, cachedAt, iod, mjo, mon, out){
         + '<br><span class="staledbg">'+wkDebug+'</span></div>'
       : '')
     +'<div class="row"><span class="k">'+tr('nino34')+' · '+tr('week')+' ('+wkLatest.date+')</span><span class="v '+(phaseOf(wkLatest.nino34))+'">'+fmt(wkLatest.nino34)+'°C</span></div>'
-    +'<div class="row"><span class="k">'+tr('nino34')+' · '+tr('weekAgo')+'</span><span class="v">'+fmt(wkPrev.nino34)+'°C</span></div>'
-    +'<div class="row"><span class="k">'+tr('nino3')+'</span><span class="v">'+fmt(wkLatest.nino3)+'°C</span></div>'
-    +'<div class="row"><span class="k">'+tr('nino4')+'</span><span class="v">'+fmt(wkLatest.nino4)+'°C</span></div>'
+    +'<div class="row"><span class="k">'+tr('wkChange')+'<br><span class="k-sub">'+tr('weekAgo')+' ('+wkPrev.date+') '+fmt(wkPrev.nino34)+'°C</span></span>'
+      +'<span class="v" style="color:'+wkDeltaCol+'">'+wkDeltaTxt+'</span></div>'
+    +'<div class="wktrend">'+tr('wkTrendLbl')+'</div>'
+    +'<div class="spark spark-wk">'+wkBars+'</div>'
+    +'<div class="axis-row">'+wkAxis+'</div>'
+    +'<div class="mapnote">'+tr('wkVsRoni')+'</div>'
+    +'<div class="mapnote">'+tr('wkRegionsMoved')+'</div>'
+  +'</div>'
+
+  // ---- Monitoring-region map. Same weekly row as the card above, so the
+  // ---- boxes and the numbers can never disagree; both go blank when stale.
+  +'<div class="card'+(wkStale?' stale':'')+'">'
+    +'<div class="cardtitle"><span class="dot"></span>'+tr('mapCardTitle')+'</div>'
+    +'<div class="cardhint">'+tr('mapCardHint')+'</div>'
+    + NinoMap.markup('card')
+    +'<div class="nregions">'+ regionCells(wkLatest, wkStale) +'</div>'
+    +'<div class="maplegend">'
+      +'<span><i style="background:rgb(226,167,163)"></i>'+tr('mapLegWarm')+'</span>'
+      +'<span><i style="background:rgb(150,183,243)"></i>'+tr('mapLegCool')+'</span>'
+      +'<span><i style="background:#fff;border:2px dashed #f59e0b"></i>'+tr('mapLeg34')+'</span>'
+    +'</div>'
+    +'<div class="mapnote">'+ (wkStale ? tr('mapStaleNote') : tr('map34Note')) +'</div>'
+    +'<div class="mapnote" style="color:#0f766e">● '+tr('mapMY')+' — '+tr('mapMYsub')+'</div>'
   +'</div>'
 
   + iodCard(iod)
@@ -1634,6 +2351,16 @@ function render(roni, weekly, cachedAt, iod, mjo, mon, out){
   +'<button class="btn wabtn" onclick="shareWA()" aria-label="WhatsApp">'+waIcon()+'</button>';
 
   document.getElementById('app').innerHTML = html;
+
+  // Hand the map the same weekly row and the same staleness verdict the cards
+  // used. setData() redraws every mounted instance, so the help-guide copy and
+  // the card copy always agree.
+  NinoMap.setI18n(tr);
+  NinoMap.setData(
+    { '1+2': wkLatest.nino12, '3': wkLatest.nino3,
+      '3.4': wkLatest.nino34, '4': wkLatest.nino4 },
+    wkStale, wkLatest.date);
+  NinoMap.mount('card');
 }
 
 function renderError(e){
@@ -1782,9 +2509,12 @@ function helpContent(){
     +'<p>🌡️ '+tr('helpAnomaly')+'</p>'
     +'<div class="helpdiv"></div>'
     +'<p>📅 '+tr('helpSeason')+'</p>'
+    +'<p>'+tr('helpRoniWhy')+'</p>'
     +'<p>🌊 '+tr('helpWhat34')+'</p>'
     +'<div class="maptitle">🗺️ '+tr('mapTitle')+'</div>'
     +'<div class="mapwrap">'+ninoMap()+'</div>'
+    +'<p class="helpnote">'+tr('mapProj')+'</p>'
+    +'<p class="helpnote">'+tr('map34Note')+'</p>'
     +'<p>'+tr('helpWalker')+'</p>'
     +'<div class="maptitle">🔄 '+tr('walkerTitle')+'</div>'
     +'<div class="mapwrap">'+walkerDiagram()+'</div>'
@@ -1868,6 +2598,9 @@ function openHelp(){
   body.innerHTML = helpContent();
   body.scrollTop = 0;
   ov.classList.add('show');
+  // The canvas only exists once the HTML above is in the DOM, and it can only
+  // be measured after the overlay is visible -- so mount on the next frame.
+  requestAnimationFrame(function(){ NinoMap.mount('help'); });
   document.body.style.overflow = 'hidden'; // lock background scroll
 }
 function closeHelp(){
@@ -1884,6 +2617,7 @@ function helpBackdrop(e){
 /* ===================== BOOT ===================== */
 function boot(){
   applyLang();
+  NinoMap.setI18n(tr);   // module draws its own labels; give it the translator
   setTimeout(function(){
     var b = document.getElementById('boot');
     if (b) b.style.display='none';
