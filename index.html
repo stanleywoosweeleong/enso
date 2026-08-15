@@ -169,8 +169,14 @@
     min-width:44px;min-height:34px;padding:0 12px;font-size:17px;font-weight:600;
     line-height:1;display:flex;align-items:center;justify-content:center}
   .mapzoom .zbtn:active{background:#dbe3ea}
-  .rotbtn{min-height:34px;padding:0 13px;font-size:12.5px;font-weight:600;
-    display:inline-flex;align-items:center;flex-shrink:0;white-space:nowrap}
+  /* State chip, overlaid on the map corner instead of occupying a control
+     slot. Quiet when off, unmistakable when on. */
+  .rotchip{position:absolute;top:8px;right:8px;z-index:2;font:inherit;
+    font-size:11.5px;font-weight:600;line-height:1;padding:6px 9px;cursor:pointer;
+    border-radius:999px;white-space:nowrap;
+    background:rgba(255,255,255,.82);color:#64748b;border:1px solid var(--line)}
+  .rotchip.on{background:#0c4a6e;border-color:#0c4a6e;color:#fff;
+    box-shadow:0 1px 6px rgba(12,74,110,.35)}
   /* While rotation is armed the canvas is visibly different -- otherwise the
      page not scrolling looks like the app has frozen. */
   .ninocanvas.rot{box-shadow:0 0 0 2px #0c4a6e;border-radius:8px}
@@ -693,9 +699,24 @@ function bind(id){
   // only drags once rotation is switched on; otherwise we ignore it completely
   // and leave the gesture to the browser's scroller.
   function touchBlocked(ev){ return ev.pointerType !== 'mouse' && !V.rotate; }
+  // Tap-to-arm. touch-action is read by the browser when a gesture STARTS, so
+  // it cannot be flipped mid-drag -- arming has to happen on a gesture that has
+  // already finished. A tap is that gesture: it ends cleanly, and the next
+  // drag then begins under touch-action:none.
+  var tapAt=null, tapT=0;
   cv.addEventListener('pointerdown', function(ev){
+    if (ev.pointerType !== 'mouse'){ tapAt=[ev.clientX,ev.clientY]; tapT=Date.now(); }
     if (touchBlocked(ev)) return;
     V.drag=pos(ev); cv.setPointerCapture(ev.pointerId); cv.style.cursor='grabbing';
+  });
+  cv.addEventListener('pointerup', function(ev){
+    if (ev.pointerType === 'mouse' || !tapAt) return;
+    var moved = Math.abs(ev.clientX-tapAt[0]) + Math.abs(ev.clientY-tapAt[1]);
+    var quick = Date.now()-tapT < 400;
+    tapAt=null;
+    // A real tap: barely moved, quick, and only ever ARMS. Disarming stays on
+    // the chip, so a stray tap while rotating cannot silently switch it off.
+    if (moved < 10 && quick && !V.rotate) setRotate(id, true);
   });
   function stop(){ V.drag=null; cv.style.cursor='grab'; }
   cv.addEventListener('pointerup', stop);
@@ -767,6 +788,10 @@ function markup(id){
   return ''
    +'<div class="nmap" id="nmapbox-'+id+'">'
      +'<canvas id="nmap-'+id+'" class="ninocanvas"></canvas>'
+     // State indicator and escape hatch, sitting ON the map rather than in the
+     // control row -- it costs a map corner instead of a button slot.
+     +'<button type="button" class="rotchip" data-rot="1" aria-pressed="false"'
+       +' onclick="NinoMap.toggleRotate(\''+id+'\')">'+trFn('mapRotOff')+'</button>'
      +'<div class="mapfoot">'
        +'<div class="mapctl" id="nctl-'+id+'">'
          + btn('proj','O','ortho',true) + btn('proj','E','equi') + btn('proj','W3','winkel')
@@ -778,8 +803,6 @@ function markup(id){
        // row above, flex-wrap would break the pair apart and orphan the "+" on a
        // line by itself, which is what it did at phone width.
        +'<div class="mapctl mapctl-z">'
-         +'<button type="button" class="mapbtn rotbtn" data-rot="1" aria-pressed="false"'
-           +' onclick="NinoMap.toggleRotate(\''+id+'\')">'+trFn('mapRotOff')+'</button>'
          +'<span class="mapzoom">'
            +'<button type="button" class="mapbtn zbtn" data-zoom="-1" aria-label="'
              + trFn('mapZoomOut') + '" onclick="NinoMap.zoom(\''+id+'\',-1)">\u2212</button>'
@@ -876,6 +899,14 @@ function resizeAll(){
   });
 }
 window.addEventListener('resize', resizeAll);
+// If the page scrolls, the user has moved on -- disarm, so nobody is left with
+// a map that silently eats their next swipe. While a map is armed and being
+// dragged the page does not scroll, so this cannot fire mid-gesture.
+window.addEventListener('scroll', function(){
+  Object.keys(INST).forEach(function(id){
+    if (INST[id].rotate && !INST[id].drag && document.getElementById('nmap-'+id)) setRotate(id, false);
+  });
+}, { passive:true });
 
 return { markup:markup, mount:mount, setProj:setProj, setView:setView, zoom:zoom,
          toggleRotate:toggleRotate, setRotate:setRotate,
@@ -1129,12 +1160,12 @@ var T = {
   mapViewPac: {zh:'太平洋', en:'Pacific'},
   mapViewMY:  {zh:'马来西亚', en:'Malaysia'},
   mapDragHint:{zh:'拖动旋转 · 滚轮／双指缩放', en:'drag to rotate · wheel/pinch to zoom'},
-  mapRotOff:  {zh:'✋ 开启旋转', en:'✋ Rotate'},
-  mapRotOn:   {zh:'✋ 旋转中', en:'✋ Rotating'},
-  mapHintScroll:{zh:'现在上下滑动可正常翻页。要拖动地球，先点「✋ 开启旋转」。',
-                 en:'Swiping scrolls the page as usual. To drag the globe, tap ✋ Rotate first.'},
-  mapHintRot: {zh:'拖动旋转 · 双指缩放 · 再点一次恢复翻页',
-               en:'Drag to rotate · pinch to zoom · tap again to restore page scrolling'},
+  mapRotOff:  {zh:'✋ 旋转', en:'✋ Rotate'},
+  mapRotOn:   {zh:'✋ 旋转中 · 点此结束', en:'✋ Rotating · tap to stop'},
+  mapHintScroll:{zh:'点一下地图即可拖动旋转；现在上下滑动仍可正常翻页。',
+                 en:'Tap the map once to drag it; right now swiping still scrolls the page normally.'},
+  mapHintRot: {zh:'拖动旋转 · 双指缩放 · 在页面其他地方滑动即自动结束',
+               en:'Drag to rotate · pinch to zoom · scrolling elsewhere ends it automatically'},
   mapZoomIn:  {zh:'放大', en:'Zoom in'},
   mapZoomOut: {zh:'缩小', en:'Zoom out'},
   wkChange:   {zh:'较上周', en:'Change vs last week'},
