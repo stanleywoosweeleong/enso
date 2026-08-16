@@ -22,6 +22,12 @@
  * Exit codes: 0 = all good (warnings allowed), 1 = at least one FAIL.
  */
 
+// ERDDAP answered 403 to a GitHub runner and 522 through the Cloudflare Worker
+// on 16 Aug 2026 while serving a browser the same URL perfectly. The feeds that
+// passed that morning all send a Mozilla-prefixed UA; the ones that were
+// refused did not. Identify honestly, but in the shape servers accept.
+const UA = 'Mozilla/5.0 (compatible; enso-feed-health/1.0; +https://github.com/stanleywoosweeleong)';
+
 const MONTHS = { jan:0, feb:1, mar:2, apr:3, may:4, jun:5,
                  jul:6, aug:7, sep:8, oct:9, nov:10, dec:11 };
 
@@ -148,14 +154,21 @@ export function buildChecks(proxy){
       url: 'https://www.cpc.ncep.noaa.gov/data/indices/RONI.ascii.txt',
       check: t => parseRoni(t) },
 
-    { name: 'upstream: ERDDAP OISST NRT', direct: true, budget: 6,
+    // Both ERDDAP hosts, so "the mirror is also down" and "only the primary is
+    // refusing us" are distinguishable at a glance.
+    { name: 'upstream: ERDDAP (coastwatch)', direct: true, budget: 6,
       url: 'https://coastwatch.pfeg.noaa.gov/erddap/griddap/ncdcOisst21NrtAgg.das',
-      check: t => {
-        const m = t.match(/time_coverage_end\s+"([^"]+)"/);
-        if (!m) throw new Error('no time_coverage_end in the .das');
-        return { ts: Date.parse(m[1]), note: 'newest slice ' + m[1].slice(0,10) };
-      } },
+      check: t => dasAge(t) },
+    { name: 'upstream: ERDDAP (upwell mirror)', direct: true, budget: 6,
+      url: 'https://upwell.pfeg.noaa.gov/erddap/griddap/ncdcOisst21NrtAgg.das',
+      check: t => dasAge(t) },
   ];
+}
+
+export function dasAge(t){
+  const m = t.match(/time_coverage_end\s+"([^"]+)"/);
+  if (!m) throw new Error('no time_coverage_end in the .das');
+  return { ts: Date.parse(m[1]), note: 'newest slice ' + m[1].slice(0,10) };
 }
 
 /* ---------------- runner ---------------------------------------------------- */
@@ -165,8 +178,13 @@ export async function runChecks(checks, fetchFn = fetch){
   for (const c of checks){
     const row = { name: c.name, status: 'FAIL', age: null, note: '' };
     try {
-      const r = await fetchFn(c.url, { headers: { 'User-Agent': 'enso-feed-health/1.0' } });
-      if (!r.ok){ row.note = `HTTP ${r.status}`; out.push(row); continue; }
+      const r = await fetchFn(c.url, { headers: { 'User-Agent': UA } });
+      if (!r.ok){
+        // 403 from a datacentre IP is a refusal, not an outage -- worth saying
+        // so, because the instinct on seeing it is to go looking for downtime.
+        row.note = `HTTP ${r.status}` + (r.status === 403 ? ' (refused, not down — check UA / IP block)' : '');
+        out.push(row); continue;
+      }
       const body = await r.text();
       if (!body || body.length < 40){ row.note = `body only ${body.length} bytes`; out.push(row); continue; }
       const res = c.check(body);
