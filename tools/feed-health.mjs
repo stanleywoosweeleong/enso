@@ -113,10 +113,16 @@ export function buildChecks(proxy){
         if (!o.points) throw new Error('zero grid points');
         return { ts: Date.parse(o.date + 'T12:00:00Z'),
                  note: `${o.date}  ${o.points} pts  via ${o.source}`,
-                 // The check with no visible symptom: the near-real-time source
-                 // failing and the two-week-old final product answering instead.
-                 warn: o.source !== 'oisst-nrt'
-                   ? `fell back to ${o.source}; NRT did not answer` : null };
+                 // Two different things, and the old message conflated them.
+                 // A MIRROR is the same near-real-time product from another
+                 // host: the data is right, but redundancy is gone. The FINAL
+                 // product is genuinely two weeks old. Only the second is the
+                 // failure with no visible symptom; the first is worth knowing
+                 // because you are now down to your last NRT source.
+                 warn: o.source === 'oisst-nrt' ? null
+                     : o.source.indexOf('oisst-nrt') === 0
+                       ? `primary host refused; serving NRT from ${o.source} — redundancy gone`
+                       : `fell back to ${o.source}, the ~2-week-old final product` };
       } },
 
     { name: 'outlook (CPC discussion)', url: P('outlook'), budget: 45,
