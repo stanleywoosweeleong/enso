@@ -411,7 +411,14 @@ var PROJ = {
     fwd: function(l,p){ return [l*D, -p*D]; },
     inv: function(x,y){ var l=x/D, p=-y/D;
       if (Math.abs(l)>180 || Math.abs(p)>90) return null; return [l,p]; },
-    ext: [2*Math.PI, Math.PI], sphere: false
+    ext: [2*Math.PI, Math.PI], sphere: false,
+    // A plain lon/lat grid, so it can sit flush against the canvas edges with
+    // no inset: 180degW at x=0, 180degE at x=w.
+    fillWidth: true,
+    // ...and it is the one projection where an oblique rotation is useless --
+    // tilting fans the graticule out and it stops reading as a world map.
+    // Longitude only here; O and W3 still tilt on both axes.
+    lonOnly: true
   },
   winkel: {
     fwd: function(l,p){ l*=D; p*=D;
@@ -594,7 +601,9 @@ function draw(id){
   if (P.sphere) ctx.arc(V.cx,V.cy,V.R,0,7);
   else { e=P.ext; ctx.rect(V.cx-e[0]/2*V.R, V.cy-e[1]/2*V.R, e[0]*V.R, e[1]*V.R); }
   ctx.fillStyle='#e0f2fe'; ctx.fill();
-  ctx.strokeStyle='#7dd3fc'; ctx.lineWidth=1; ctx.stroke();
+  // A border drawn flush with the canvas edge is half-clipped and reads as a
+  // rendering artefact, so the edge-to-edge projection goes without one.
+  if (!P.fillWidth){ ctx.strokeStyle='#7dd3fc'; ctx.lineWidth=1; ctx.stroke(); }
   ctx.save(); ctx.clip();
 
   // graticule
@@ -712,7 +721,9 @@ function sizeTo(id){
   cv.getContext('2d').setTransform(dpr,0,0,dpr,0,0);
   V.w=w; V.h=h; V.cx=w/2; V.cy=h/2;
   var e=PROJ[V.proj].ext;
-  V.R=Math.min((w-12)/e[0], (h-12)/e[1]) * V.scale;   // fitExtent equivalent
+  V.R = PROJ[V.proj].fillWidth
+      ? (w/e[0]) * V.scale                              // flush to both edges
+      : Math.min((w-12)/e[0], (h-12)/e[1]) * V.scale;   // fitExtent equivalent
   draw(id);
 }
 
@@ -741,10 +752,10 @@ function bind(id){
       ev.preventDefault();
       k=90/V.R;
       V.rot[0]=wrap180(V.rot[0]+(p[0]-V.drag[0])*k);
-      // Tilt works on EVERY projection. Winkel and equirectangular render an
-      // oblique rotation perfectly well -- it was only ever disabled here to
-      // avoid needing touch-action:none inline, which no longer applies.
-      V.rot[1]=clamp(V.rot[1]-(p[1]-V.drag[1])*k,-89,89);
+      // Tilt on the globe and on Winkel, which both hold up obliquely.
+      // Equirectangular opts out via lonOnly -- see PROJ.equi.
+      if (!PROJ[V.proj].lonOnly)
+        V.rot[1]=clamp(V.rot[1]-(p[1]-V.drag[1])*k,-89,89);
       V.drag=p; draw(id);
     }
     if (out){
@@ -881,7 +892,10 @@ function fullShell(){
 }
 function setProj(id, p){
   var V=inst(id), box=document.getElementById('nctl-'+id), b, i;
-  V.proj=p;   // tilt is preserved across a projection change
+  V.proj=p;
+  // Tilt carries across a projection change, except into a lon-only one, where
+  // a leftover tilt would render an oblique map the user cannot undo by dragging.
+  if (PROJ[p].lonOnly) V.rot[1]=0;
   if (box){ b=box.querySelectorAll('[data-proj]');
     for (i=0;i<b.length;i++) b[i].classList.toggle('on', b[i].getAttribute('data-proj')===p); }
   sizeTo(id);
@@ -946,7 +960,7 @@ return { markup:markup, mount:mount, setProj:setProj, setView:setView, zoom:zoom
          openFull:openFull, closeFull:closeFull, fullShell:fullShell, ctlRow:ctlRow,
          setData:setData, setI18n:setI18n, resizeAll:resizeAll,
          REGIONS:REGIONS, _ramp:ramp, _cutRing:cutRing, _PROJ:PROJ,
-         _rot:rot, _unrot:unrot };
+         _rot:rot, _unrot:unrot, _view:inst };
 })();
 </script>
 
@@ -2789,7 +2803,7 @@ window.addEventListener('load', boot);
 // network returns, and every 15 minutes while it stays open.
 var SW_REG = null, SW_RELOADING = false;
 
-function swShowUpdate(reg){
+function swShowUpdate(reg, newVer){
   if (document.getElementById('swbar')) return;   // already offered
   var bar = document.createElement('div');
   bar.id = 'swbar';
@@ -2803,13 +2817,26 @@ function swShowUpdate(reg){
     // The waiting worker activates, which fires controllerchange below, which
     // reloads. If anything goes wrong, reload anyway after a moment rather
     // than leaving the button spinning forever.
-    if (reg.waiting) reg.waiting.postMessage({ type:'SKIP_WAITING' });
+    // Two paths. Normally a worker is already waiting and we just tell it to
+    // take over. But the probe can spot a new build BEFORE the browser has
+    // installed it, and in that case there is nothing to message -- so kick an
+    // update and reload once it lands.
+    if (reg && reg.waiting) {
+      reg.waiting.postMessage({ type:'SKIP_WAITING' });
+    } else if (reg) {
+      reg.update().then(function(){
+        if (reg.waiting) reg.waiting.postMessage({ type:'SKIP_WAITING' });
+      }).catch(function(){});
+    }
     setTimeout(function(){ if (!SW_RELOADING) location.reload(); }, 2500);
   };
 }
 
 if ('serviceWorker' in navigator) {
-  window.addEventListener('load', function(){
+  // Registered immediately, not on 'load'. This script is at the end of body,
+  // so the DOM is ready, and waiting for every image to finish just delays the
+  // check on exactly the slow connections where it matters most.
+  (function(){
     // updateViaCache:'none' — never let an HTTP-cached copy of sw.js hide a
     // deploy from us.
     navigator.serviceWorker.register('./sw.js', { updateViaCache: 'none' })
@@ -2836,7 +2863,11 @@ if ('serviceWorker' in navigator) {
         swReportVersion(reg);
       })
       .catch(function(){ /* ignore: the app works without it */ });
-  });
+  })();
+
+  // A standalone PWA resumed from bfcache never fires 'load' again, so this is
+  // the event that actually matters on a phone.
+  window.addEventListener('pageshow', function(ev){ if (ev.persisted) swCheck(); });
 
   // When the new worker takes control, reload once so the page matches it.
   navigator.serviceWorker.addEventListener('controllerchange', function(){
@@ -2846,7 +2877,35 @@ if ('serviceWorker' in navigator) {
   });
 }
 
-function swCheck(){ if (SW_REG) SW_REG.update().catch(function(){}); }
+function swCheck(){
+  if (SW_REG) SW_REG.update().catch(function(){});
+  swProbe();
+}
+
+// Ask the SERVER directly what build it is holding.
+//
+// This exists because the lifecycle route is not dependable on mobile. In a
+// standalone PWA the page is often restored from bfcache, so 'load' never fires
+// again; iOS throttles reg.update(); and on the launch right after a deploy the
+// running page is still the OLD build, whose script has no watcher in it at all
+// -- which is why an update needed a second launch to appear. Fetching sw.js
+// with cache:'no-store' and reading its version string works regardless of any
+// of that: two strings, compared.
+var SW_RUNNING = null, SW_OFFERED = null;
+function swProbe(){
+  fetch('./sw.js?probe=' + Date.now(), { cache:'no-store' })
+    .then(function(r){ return r.ok ? r.text() : null; })
+    .then(function(txt){
+      if (!txt) return;
+      var m = txt.match(/CACHE_VERSION\s*=\s*["']([^"']+)["']/);
+      if (!m || !SW_RUNNING) return;
+      if (m[1] !== SW_RUNNING && SW_OFFERED !== m[1]) {
+        SW_OFFERED = m[1];
+        swShowUpdate(SW_REG, m[1]);
+      }
+    })
+    .catch(function(){ /* offline: nothing to say */ });
+}
 
 // Ask the active worker which build it is and show it in the footer, so a
 // device stuck on an old cache is visible instead of a guess.
@@ -2857,7 +2916,11 @@ function swReportVersion(reg){
     var ch = new MessageChannel();
     ch.port1.onmessage = function(e){
       var el = document.getElementById('swver');
-      if (el && e.data && e.data.version) el.textContent = e.data.version;
+      if (e.data && e.data.version) {
+        SW_RUNNING = e.data.version;
+        if (el) el.textContent = e.data.version;
+        swProbe();          // now that we know what is running, compare it
+      }
     };
     sw.postMessage({ type:'VERSION' }, [ch.port2]);
   } catch (err) { /* not important enough to fail anything */ }
