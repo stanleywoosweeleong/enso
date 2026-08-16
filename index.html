@@ -936,7 +936,7 @@ var SST_FRESH_DAYS = 10, SST_DEAD_DAYS = 45;
 var rowSig = {};
 function sstTick(id){
   var s = SST.state();
-  var sig = [s.visible, s.variable, s.n, s.playing,
+  var sig = [s.visible, s.variable, s.n, s.playing, s.err,
              SST.ageDays()===null?'-':(SST.ageDays()>45?'d':SST.ageDays()>10?'a':'f')].join('|');
   if (rowSig[id] !== sig){ rowSig[id] = sig; sstRow(id); return; }
   var d = document.getElementById('nsstdate-'+id);
@@ -949,7 +949,7 @@ function sstRow(id){
   var el = document.getElementById('nsst-'+id);
   if (!el) return;
   var s = SST.state(), age = SST.ageDays(), v = s.variable, isSst = (v === 'sst');
-  rowSig[id] = [s.visible, s.variable, s.n, s.playing,
+  rowSig[id] = [s.visible, s.variable, s.n, s.playing, s.err,
                 age===null?'-':(age>45?'d':age>10?'a':'f')].join('|');
   var dead = (age !== null && age > SST_DEAD_DAYS);
   var aged = (age !== null && age > SST_FRESH_DAYS && !dead);
@@ -981,6 +981,7 @@ function sstRow(id){
   var fellBack = s.n && s.source && s.source.indexOf('oisst-nrt') !== 0;
   var status =
       dead     ? trFn('sstDead').replace('{d}', s.newest||'?').replace('{n}', age.toFixed(0))
+    : (!s.n && s.err) ? trFn('sstErr').replace('{e}', s.err)
     : !s.n     ? trFn('sstLoading')
     : aged     ? trFn('sstAged').replace('{d}', s.newest||'?').replace('{n}', age.toFixed(0))
     : fellBack ? trFn('sstFallback').replace('{s}', s.source)
@@ -1143,6 +1144,10 @@ var STEP_PX = 2;          // paint every 2nd pixel, then smooth-scale up
 var frames  = {};         // date -> { g:Int16Array, nlat, nlon, lat0, lon0, step, fill }
 var order   = [];         // dates, oldest first
 var idx     = 0, playing = false, timer = null, visible = false;
+// Why no frames arrived. Without this, a total failure was indistinguishable
+// from "still fetching", so the row said "loading" forever -- a permanent
+// spinner is a lie about state in the same way a stale label is.
+var loadErr = null;
 // PER INSTANCE. These were single globals, and with two maps mounted (the
 // fullscreen one and the card preview) each paint evicted the other's cache,
 // so every tick re-solved the whole Newton grid -- 126,000 solves a frame.
@@ -1163,6 +1168,7 @@ function addFrame(o){
     scale:(o.scale || 100), variable:o.variable, source:o.source
   };
   if (order.indexOf(o.date) < 0){ order.push(o.date); order.sort(); }
+  loadErr = null;                          // something arrived; clear the error
   idx = order.length - 1;                 // newest by default
   return true;
 }
@@ -1384,7 +1390,7 @@ function state(){
   return { visible:visible, playing:playing, i:idx, n:order.length,
            date:order[idx] || null, newest:order[order.length-1] || null,
            variable:variable, frameVar:F ? F.variable : null,
-           source:(F && F.source) || null };
+           err:loadErr, source:(F && F.source) || null };
 }
 // Age is judged on the NEWEST frame we hold, not on the one being displayed --
 // a paused time-lapse sitting on frame 3 of 12 is not evidence of anything.
@@ -1393,7 +1399,8 @@ function ageDays(){
   if (!d) return null;
   return (Date.now() - Date.parse(d + 'T12:00:00Z')) / 864e5;
 }
-function reset(){ frames = {}; order = []; idx = 0; stop(); invCache={}; isoCache={key:null,segs:null}; }
+function reset(){ frames = {}; order = []; idx = 0; stop(); invCache={}; isoCache={key:null,segs:null}; loadErr=null; }
+function setError(msg){ loadErr = String(msg || 'unknown'); onChange(); }
 
 // Frames are keyed by DATE alone, so anom and sst slices for the same day
 // would overwrite each other and leave the field half one variable and half
@@ -1433,6 +1440,7 @@ return { addFrame:addFrame, paint:paint, play:play, stop:stop, toggle:toggle,
          seek:seek, setVisible:setVisible, state:state, ageDays:ageDays,
          reset:reset, onChange:function(f){ onChange = f; },
          setVariable:setVariable, getVariable:getVariable, show:show,
+         setError:setError,
          onNeedFrames:function(f){ needFrames = f; },
          isoSegments:isoSegments, rampCss:rampCss, isoLevel:ISO_LEVEL,
          _isotherm:isotherm, _ramps:function(){ if(!RAMPS) buildRamps(); return RAMPS; },
@@ -1770,6 +1778,8 @@ var T = {
 
   sstHint:    {zh:'点上面任一个可叠加 NOAA OISST 海温场并播放近 12 周变化；再点同一个即可关闭。',
                en:'Tap either button above to overlay the NOAA OISST field and play the last 12 weeks; tap the same one again to switch it off.'},
+  sstErr:     {zh:'⚠️ 海温场载入失败：{e}',
+               en:'⚠️ Could not load the SST field: {e}'},
   sstLoading: {zh:'正在载入海温场…', en:'Loading the SST field…'},
   sstFallback:{zh:'⚠️ 近实时数据源没有回应，本图来自「{s}」——NOAA 的最终版，按设计会落后约两周。日期虽在范围内，但不是最新观测。',
                en:'⚠️ The near-real-time source did not answer; this field came from “{s}” — NOAA’s final product, which lags about two weeks by design. The date looks recent enough, but it is not the latest observation.'},
@@ -3432,14 +3442,22 @@ function sstStatic(v){
 function sstLoad(varName){
   if (typeof NinoMap === 'undefined' || !NinoMap.SST) return;
   var v = (varName === 'sst') ? 'sst' : 'anom';
-  sstStatic(v).catch(function(){ sstWorker(v); });
+  // Both paths report why they failed. They used to swallow every error, so a
+  // total failure looked exactly like "still loading" and the row spun forever.
+  sstStatic(v).catch(function(e1){
+    return sstWorker(v).catch(function(e2){
+      NinoMap.SST.setError('static: ' + (e1 && e1.message || e1)
+                         + ' · worker: ' + (e2 && e2.message || e2));
+      NinoMap.sstRow('full');
+    });
+  });
 }
 
 function sstWorker(v){
   return getFeed('sst&var=' + v + '&date=last').then(function(txt){
     var o = JSON.parse(txt);
-    if (!o || o.ok !== true) return;
-    if (o.variable !== NinoMap.SST.getVariable()) return;
+    if (!o || o.ok !== true) throw new Error(o && o.reason || 'feed not ok');
+    if (o.variable !== NinoMap.SST.getVariable()) throw new Error('variable changed mid-fetch');
     NinoMap.SST.addFrame(o);
     NinoMap.sstRow('full');
     // Walk back from the date the SERVER gave us, not from today's date --
@@ -3459,7 +3477,7 @@ function sstWorker(v){
         }).catch(function(){});
       })(new Date(base - i*7*864e5).toISOString().slice(0,10));
     }
-  }).catch(function(){ /* no field today; the boxes still work */ });
+  });   // rejection propagates to sstLoad, which surfaces it
 }
 // Switching variable clears the frame store, so the layer asks us to refill it.
 if (typeof NinoMap !== 'undefined' && NinoMap.SST) {
