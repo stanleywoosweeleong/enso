@@ -216,18 +216,28 @@ async function main(){
   try {
     const iod = await buildIod();
     await writeIfChanged(path.join(OUT, 'iod.json'), { ...iod, builtAt: new Date().toISOString() });
-    log.push(`ok   iod: ${iod.ok ? iod.value + ' °C as of ' + iod.asOf
-                     : iod.neutral ? 'neutral, no figure (' + iod.asOf + ')' : 'FAILED — ' + iod.reason}`);
-    if (!iod.ok && !iod.neutral) hardFail = hardFail || ('iod: ' + iod.reason);
+    log.push(`${iod.ok || iod.neutral ? 'ok  ' : 'warn'} iod: ${iod.ok ? iod.value + ' °C as of ' + iod.asOf
+                     : iod.neutral ? 'neutral, no figure (' + iod.asOf + ')' : 'scrape failed — ' + iod.reason}`);
+    // Deliberately NOT a hard failure. The written file carries the reason,
+    // feed-health reads it and fails the same morning, and the app falls back
+    // to the monthly DMI. Reddening this job too would just be the same alarm
+    // twice a day, which is how people learn to ignore alarms.
   } catch (e){
-    log.push('FAIL iod: ' + e.message);
-    hardFail = hardFail || ('iod: ' + e.message);
+    log.push('warn iod: ' + e.message);
+    await writeIfChanged(path.join(OUT, 'iod.json'),
+      { ok: false, reason: String(e.message || e), builtAt: new Date().toISOString() });
   }
 
   console.log(log.join('\n'));
+  const { appendFileSync } = await import('node:fs');
   if (process.env.GITHUB_STEP_SUMMARY){
-    const { appendFileSync } = await import('node:fs');
     appendFileSync(process.env.GITHUB_STEP_SUMMARY, '```\n' + log.join('\n') + '\n```\n');
+  }
+  // Hand the reason to the workflow so the failing step can NAME it. "See the
+  // job summary" makes you go and look; the point of an alert is to arrive
+  // already knowing.
+  if (process.env.GITHUB_OUTPUT){
+    appendFileSync(process.env.GITHUB_OUTPUT, 'reason=' + (hardFail || '').replace(/\n/g, ' ') + '\n');
   }
   if (hardFail){ console.error('\nbuild incomplete: ' + hardFail); process.exit(1); }
 }
