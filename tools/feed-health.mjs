@@ -121,13 +121,28 @@ export function buildChecks(proxy, site){
                    ? `built from ${ix.source}, the ~2-week-old final product` : null };
       } },
 
-    { name: 'built: IOD', url: S('data/iod.json'), budget: 21,
+    // The IOD the app actually uses: our own weekly DMI from OISST. BoM blocks
+    // Cloudflare and GitHub runners alike, so its scrape is no longer something
+    // to alarm on -- this is.
+    { name: 'built: DMI (computed)', url: S('data/dmi.json'), budget: 12,
+      check: t => {
+        const o = JSON.parse(t);
+        if (o.ok !== true) throw new Error(o.reason || 'not computed');
+        if (!o.cells || o.cells.west < 20 || o.cells.east < 20)
+          throw new Error(`too few ocean cells (W ${o.cells?.west}, E ${o.cells?.east})`);
+        return { ts: Date.parse(o.date + 'T12:00:00Z'),
+                 note: `${o.value} (W ${o.west} / E ${o.east}) via ${o.source}` };
+      } },
+
+    // Informational: if BoM ever stops blocking CI we want to know, but it
+    // must not fail the job for a source we have deliberately stopped relying on.
+    { name: 'built: BoM IOD (informational)', url: S('data/iod.json'), budget: 21, soft: true,
       check: t => {
         const o = JSON.parse(t);
         if (o.ok === true) return { ts: parseProseDate(o.asOf), note: `${o.value} °C as of ${o.asOf}` };
         if (o.neutral === true) return { ts: parseProseDate(o.asOf),
           note: `BoM reports neutral, no figure (dated ${o.asOf})` };
-        throw new Error(o.reason || 'builder could not scrape BoM');
+        throw new Error(o.reason || 'BoM refuses CI — expected');
       } },
 
     // Kept as a fallback path, so a WARN here is informational: the app no
@@ -160,7 +175,7 @@ export function buildChecks(proxy, site){
         return { ts: parseProseDate(o.issued), note: `${o.status} — issued ${o.issued}` };
       } },
 
-    { name: 'iod via Worker (fallback only)', url: P('iod'), budget: 21,
+    { name: 'iod via Worker (informational)', url: P('iod'), budget: 21, soft: true,
       check: t => {
         const o = JSON.parse(t);
         // Three legitimate outcomes, and only one of them is a fault.
@@ -186,13 +201,16 @@ export function buildChecks(proxy, site){
       url: 'https://www.cpc.ncep.noaa.gov/data/indices/RONI.ascii.txt',
       check: t => parseRoni(t) },
 
-    // Both ERDDAP hosts, so "the mirror is also down" and "only the primary is
-    // refusing us" are distinguishable at a glance.
-    { name: 'upstream: ERDDAP (coastwatch)', direct: true, budget: 6,
+    // ONE probe, and it cannot fail the job.
+    //
+    // Two reasons. ERDDAP rate-limits, and the builder needs that quota far
+    // more than the monitor does -- probing both hosts every run was the
+    // monitor competing with the thing it is meant to watch. And the outcome
+    // is already covered: if ERDDAP truly stops answering, the builder stops
+    // committing and 'built: SST frames' ages past its budget. A 403 here is
+    // usually just the quota we spent ourselves.
+    { name: 'upstream: ERDDAP (informational)', direct: true, budget: 6, soft: true,
       url: 'https://coastwatch.pfeg.noaa.gov/erddap/griddap/ncdcOisst21NrtAgg.das',
-      check: t => dasAge(t) },
-    { name: 'upstream: ERDDAP (upwell mirror)', direct: true, budget: 6,
-      url: 'https://upwell.pfeg.noaa.gov/erddap/griddap/ncdcOisst21NrtAgg.das',
       check: t => dasAge(t) },
   ];
 }
@@ -213,9 +231,13 @@ export async function runChecks(checks, fetchFn = fetch){
     try {
       const r = await fetchFn(c.url, { headers: { 'User-Agent': UA } });
       if (!r.ok){
-        // 403 from a datacentre IP is a refusal, not an outage -- worth saying
-        // so, because the instinct on seeing it is to go looking for downtime.
-        row.note = `HTTP ${r.status}` + (r.status === 403 ? ' (refused, not down — check UA / IP block)' : '');
+        if (c.soft) row.status = 'WARN';
+        // 403/429 from a datacentre IP is usually quota, not downtime -- and
+        // 404 on a committed file means the URL is wrong, not the file missing.
+        row.note = `HTTP ${r.status}`
+          + (r.status === 403 || r.status === 429 ? ' (refused or rate-limited, not down)' : '')
+          + (r.status === 404 && c.url.indexOf('github.io') > -1
+              ? ' — is ENSO_SITE pointing at the repo that holds data/?' : '');
         out.push(row); continue;
       }
       const body = bodyText = await r.text();
@@ -230,7 +252,7 @@ export async function runChecks(checks, fetchFn = fetch){
       row.note = res.note;
       if (!isFinite(row.age)){ row.note += ' — unparsable date'; out.push(row); continue; }
       if (row.age > c.budget){
-        row.status = 'FAIL';
+        row.status = c.soft ? 'WARN' : 'FAIL';
         row.note += ` — ${row.age.toFixed(0)}d old, budget ${c.budget}d`;
       } else if (res.warn){
         row.status = 'WARN';
@@ -239,6 +261,7 @@ export async function runChecks(checks, fetchFn = fetch){
         row.status = 'OK';
       }
     } catch (e){
+      if (c.soft) row.status = 'WARN';
       row.note = String(e && e.message || e);
       // Show what actually came back. Guessing at a parse failure from the
       // message alone wastes a morning; 120 characters of the body usually
@@ -275,7 +298,10 @@ export function report(rows){
 
 if (import.meta.url === `file://${process.argv[1]}`){
   const proxy = process.env.ENSO_PROXY || 'https://enso-proxy.standphoto.workers.dev';
-  const site  = process.env.ENSO_SITE  || 'https://stanleywoosweeleong.github.io/Newemso';
+  // The workflow derives this from the repo it runs in; this default only
+  // matters when running the script by hand. It is the LIVE repo -- "Newemso"
+  // is a test repo and must not be targeted.
+  const site  = process.env.ENSO_SITE  || 'https://stanleywoosweeleong.github.io/enso';
   const rows = await runChecks(buildChecks(proxy, site));
   const md = report(rows);
   console.log(md);

@@ -142,6 +142,72 @@ async function fetchFrame(variable, dateSel){
   throw new Error(tried.join(' | '));
 }
 
+/* ------------------------------------------------------- IOD, computed ---
+ * BoM answers 403 to Cloudflare Workers AND to GitHub runners -- it blocks
+ * datacentre ranges broadly, so relocating the scrape does not help and no
+ * header makes a difference. Scraping it from CI is a dead end.
+ *
+ * So compute the Dipole Mode Index instead, from the same OISST analysis the
+ * SST layer already uses (Saji & Yamagata 1999):
+ *
+ *   DMI = mean SST anomaly over the WEST box  (50-70E, 10S-10N)
+ *       - mean SST anomaly over the EAST box  (90-110E, 10S-0)
+ *
+ * One extra ERDDAP request covers both boxes. This is NOT BoM's published
+ * number: BoM uses its own analysis and baseline, so expect small differences
+ * in magnitude. The sign and the crossings of +/-0.4 are what matter, and the
+ * app labels it as computed so nobody reads it as BoM's figure.
+ */
+const DMI_W = { latS: -10, latN: 10, lonW: 50, lonE: 70 };
+const DMI_E = { latS: -10, latN:  0, lonW: 90, lonE: 110 };
+
+function boxMean(rows, box){
+  let sum = 0, n = 0;
+  for (const r of rows){
+    if (r.lat < box.latS || r.lat > box.latN) continue;
+    if (r.lon < box.lonW || r.lon > box.lonE) continue;
+    sum += r.v; n++;
+  }
+  if (!n) throw new Error('no ocean cells in box');
+  return { mean: sum / n, cells: n };
+}
+
+async function buildDmi(dateSel){
+  // One query spanning both boxes: 10S-10N, 50-110E.
+  const q = `anom[${dateSel}][(0.0)][(-10):${STRIDE}:(10)][(50):${STRIDE}:(110)]`;
+  const tried = [];
+  for (const ds of DATASETS){
+    for (const host of ERDDAP){
+      const tag = `oisst-${ds.name}-${host.name}`;
+      try {
+        const csv = await paced(() => get(host.base + ds.id + '.csv0?' + encodeURIComponent(q)));
+        const rows = [];
+        let date = null;
+        for (const line of csv.split('\n')){
+          const c = line.split(',');
+          if (c.length < 5) continue;
+          if (!date) date = c[0].slice(0, 10);
+          const lat = +c[2], lon = +c[3], v = parseFloat(c[4]);
+          if (!isFinite(lat) || !isFinite(lon) || !isFinite(v) || v <= -9.98) continue;
+          rows.push({ lat, lon, v });
+        }
+        if (rows.length < 50) { tried.push(tag + ' too few cells'); continue; }
+        const w = boxMean(rows, DMI_W), e = boxMean(rows, DMI_E);
+        const dmi = w.mean - e.mean;
+        return {
+          ok: true, value: Math.round(dmi * 100) / 100,
+          west: Math.round(w.mean * 100) / 100,
+          east: Math.round(e.mean * 100) / 100,
+          cells: { west: w.cells, east: e.cells },
+          date, source: tag, computed: true,
+          method: 'DMI = mean OISST anomaly 50-70E,10S-10N minus 90-110E,10S-0 (Saji & Yamagata). Computed here, not BoM\u2019s published value.',
+        };
+      } catch (err){ tried.push(tag + ' ' + (err.message || err)); }
+    }
+  }
+  throw new Error(tried.join(' | '));
+}
+
 /* ------------------------------------------------------------------- IOD */
 
 const BOM_URL = 'https://www.bom.gov.au/climate/enso/';
@@ -249,6 +315,22 @@ async function main(){
   for (const f of await readdir(path.join(OUT, 'sst'))){
     const m = f.match(/-(\d{4}-\d{2}-\d{2})\.json$/);
     if (m && Date.parse(m[1]) < cutoff) await unlink(path.join(OUT, 'sst', f));
+  }
+
+  // Computed DMI first -- it works. The BoM scrape is attempted afterwards
+  // only so that if they ever stop blocking CI we notice and can prefer their
+  // published figure again.
+  try {
+    const dmi = await buildDmi('(last)');
+    const file = path.join(OUT, 'dmi.json');
+    let hist = [];
+    try { hist = JSON.parse(await readFile(file, 'utf8')).history || []; } catch {}
+    hist = hist.filter(h => h.date !== dmi.date).concat([{ date: dmi.date, value: dmi.value }])
+               .sort((a, b) => a.date < b.date ? -1 : 1).slice(-26);
+    await writeIfChanged(file, { ...dmi, history: hist, builtAt: new Date().toISOString() });
+    log.push(`ok   dmi: ${dmi.value} (W ${dmi.west} / E ${dmi.east}) ${dmi.date} via ${dmi.source}, ${hist.length} in history`);
+  } catch (e){
+    log.push('warn dmi: ' + (e.message || e));
   }
 
   try {
