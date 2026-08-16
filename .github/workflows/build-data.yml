@@ -1,0 +1,58 @@
+name: Build data
+
+# 19:40 UTC = 03:40 Malaysia, twenty minutes ahead of the feed-health run and
+# well before the 05:15 broadcast. If a source is slow this has minutes to keep
+# retrying — which is the whole reason the fetching moved off the request path.
+on:
+  schedule:
+    - cron: '40 19 * * *'
+  workflow_dispatch:
+  push:
+    paths:
+      - 'tools/build-data.mjs'
+      - '.github/workflows/build-data.yml'
+
+permissions:
+  contents: write          # the job commits the data it fetched
+
+concurrency:
+  group: build-data        # never let two runs race to commit
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Fetch OISST frames and the BoM IOD
+        id: build
+        continue-on-error: true      # commit whatever DID succeed, then fail loudly
+        env:
+          SST_VARS: anom,sst
+        run: node tools/build-data.mjs
+
+      - name: Commit new data
+        run: |
+          if [ -z "$(git status --porcelain data)" ]; then
+            echo "no data changes"; exit 0
+          fi
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data
+          git commit -m "data: $(date -u +%Y-%m-%d) OISST frames + IOD"
+          # Another run may have pushed while this one was fetching.
+          git pull --rebase --autostash || true
+          git push
+
+      # Surfaced only after the good frames are safely committed, so a partial
+      # outage still improves the app instead of losing the work.
+      - name: Fail if the build was incomplete
+        if: steps.build.outcome == 'failure'
+        run: |
+          echo "::error::build-data reported an incomplete build — see the job summary"
+          exit 1

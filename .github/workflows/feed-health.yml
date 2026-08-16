@@ -8,7 +8,7 @@ name: Feed health
 # notification mechanism, no dashboard to remember to open.
 on:
   schedule:
-    - cron: '10 20 * * *'
+    - cron: '10 20 * * *'   # 04:10 MYT, 30 min after the data builder
   workflow_dispatch:          # run it by hand from the Actions tab any time
   push:
     paths:
@@ -35,6 +35,9 @@ jobs:
           # Override in repo Settings → Secrets and variables → Variables if the
           # Worker ever moves.
           ENSO_PROXY: ${{ vars.ENSO_PROXY || 'https://enso-proxy.standphoto.workers.dev' }}
+          # Where the committed data files are served from. Override with a
+          # repo variable if Pages moves.
+          ENSO_SITE: ${{ vars.ENSO_SITE || 'https://stanleywoosweeleong.github.io/Newemso' }}
         run: node tools/feed-health.mjs
 
       # Only fires when the step above exited non-zero. Reuses one issue per
