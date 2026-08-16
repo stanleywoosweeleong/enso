@@ -1,0 +1,237 @@
+#!/usr/bin/env node
+/**
+ * Data builder — runs on the GitHub runner, not in a user's request
+ * =================================================================
+ * Two feeds could never be made reliable from inside a Cloudflare Worker:
+ *
+ *   OISST grids  — ERDDAP takes seconds per query and answered coastwatch 403
+ *                  and 522 from Cloudflare IPs. On 16 Aug 2026 the same Worker
+ *                  got NRT at 12:12 and the two-week-old final product at
+ *                  12:24. Nothing had changed. It is latency and load, not a
+ *                  block, and no amount of header tuning converges on it.
+ *   BoM IOD      — 403 to Cloudflare IPs regardless of headers.
+ *
+ * The GitHub runner reaches both without trouble: it has minutes rather than
+ * milliseconds, and it is not on a datacentre range those servers throttle.
+ * So the fetching moves here, the result is committed, and the app reads
+ * static JSON from its own origin — no CORS, no proxy, no timeout, cached by
+ * the service worker, and it works offline.
+ *
+ * Feeds that already answer in milliseconds (roni, weekly, mjo, outlook,
+ * dmimon) stay on the Worker. They were green in every run; do not move them.
+ *
+ * Layout, chosen so the repo does not balloon:
+ *   data/sst/index.json           small manifest: grid geometry + dates held
+ *   data/sst/anom-YYYY-MM-DD.json one frame, written ONCE and never rewritten
+ *   data/iod.json                 tiny, rewritten daily
+ * One new ~8 KB file per variable per day, older ones pruned from the tree.
+ */
+
+import { writeFile, readFile, mkdir, readdir, unlink } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
+import path from 'node:path';
+
+const UA = 'Mozilla/5.0 (compatible; ENSO-Monitor-builder/1.0; +https://github.com/stanleywoosweeleong)';
+
+const ERDDAP = [
+  { name: 'coastwatch', base: 'https://coastwatch.pfeg.noaa.gov/erddap/griddap/' },
+  { name: 'upwell',     base: 'https://upwell.pfeg.noaa.gov/erddap/griddap/' },
+];
+const DATASETS = [
+  { name: 'nrt',   id: 'ncdcOisst21NrtAgg' },   // ~1 day behind
+  { name: 'final', id: 'ncdcOisst21Agg' },      // ~2 weeks behind BY DESIGN
+];
+
+// 2 deg cells. The Niño boxes are 50-60 deg wide and the source is a smoothed
+// analysis, so 1.5 -> 2 deg costs nothing visible and takes a frame from
+// ~13.7 KB to ~7.8 KB, which matters when one is committed every day.
+const LAT0 = -30, LAT1 = 30, LON0 = 100, LON1 = 290, STRIDE = 8;
+const STEP = 0.25 * STRIDE;
+const FILL = -32768;
+
+const WEEKS = 12;          // frames kept, matching the weekly Niño 3.4 card
+const KEEP_DAYS = 120;     // prune frames older than this from the working tree
+const OUT = 'data';
+
+/* ---------------------------------------------------------------- helpers */
+
+async function get(url, { tries = 3, timeout = 60000, headers = {} } = {}){
+  let last;
+  for (let i = 1; i <= tries; i++){
+    const ac = new AbortController();
+    const timer = setTimeout(() => ac.abort(), timeout);
+    try {
+      const r = await fetch(url, { signal: ac.signal, headers: { 'User-Agent': UA, ...headers } });
+      clearTimeout(timer);
+      if (!r.ok){ last = new Error('http ' + r.status); }
+      else return await r.text();
+    } catch (e){ clearTimeout(timer); last = e; }
+    // ERDDAP is slow under load rather than down; backing off usually works
+    // where retrying instantly does not.
+    if (i < tries) await new Promise(r => setTimeout(r, 4000 * i));
+  }
+  throw last || new Error('failed');
+}
+
+function packGrid(csv){
+  const nlat = Math.round((LAT1 - LAT0) / STEP) + 1;
+  const nlon = Math.round((LON1 - LON0) / STEP) + 1;
+  const g = new Int16Array(nlat * nlon).fill(FILL);
+  let date = null, n = 0;
+  for (const line of csv.split('\n')){
+    if (!line) continue;
+    const c = line.split(',');
+    if (c.length < 5) continue;
+    if (!date) date = c[0].slice(0, 10);
+    const la = +c[2], lo = +c[3], v = parseFloat(c[4]);
+    if (!isFinite(la) || !isFinite(lo)) continue;
+    const iy = Math.round((la - LAT0) / STEP), ix = Math.round((lo - LON0) / STEP);
+    if (iy < 0 || iy >= nlat || ix < 0 || ix >= nlon) continue;
+    if (!isFinite(v) || v <= -9.98) continue;      // land or gap
+    g[iy * nlon + ix] = Math.max(-32000, Math.min(32000, Math.round(v * 100)));
+    n++;
+  }
+  if (!n) throw new Error('no parsable values (an ERDDAP error page parses to nothing)');
+  return { date, nlat, nlon, points: n,
+           data: Buffer.from(g.buffer).toString('base64') };
+}
+
+async function fetchFrame(variable, dateSel){
+  const q = `${variable}[${dateSel}][(0.0)]`
+    + `[(${LAT0}):${STRIDE}:(${LAT1})][(${LON0}):${STRIDE}:(${LON1})]`;
+  const tried = [];
+  // Every host x the NRT product first; only then consider the final product.
+  for (const ds of DATASETS){
+    for (const host of ERDDAP){
+      const tag = `oisst-${ds.name}-${host.name}`;
+      try {
+        const csv = await get(host.base + ds.id + '.csv0?' + encodeURIComponent(q));
+        if (csv.indexOf(',') < 0) { tried.push(tag + ' not-csv'); continue; }
+        const p = packGrid(csv);
+        return { ...p, variable, source: tag, scale: 100, fill: FILL,
+                 lat0: LAT0, lon0: LON0, step: STEP, ok: true };
+      } catch (e){ tried.push(tag + ' ' + (e.message || e)); }
+    }
+  }
+  throw new Error(tried.join(' | '));
+}
+
+/* ------------------------------------------------------------------- IOD */
+
+const BOM_URL = 'https://www.bom.gov.au/climate/enso/';
+const IOD_VALUE_RE = /IOD\)?\s*index\s+(?:is|was)\s*([+\-\u2212]?\d+(?:\.\d+)?)\s*[°º\u00b0]?\s*C/i;
+const IOD_NEUTRAL_RE = /IOD\)?\s*(?:index\s+)?(?:is|are|has|have|now|remains?|returned?|back)[^.]{0,80}?neutral/i;
+const IOD_DATE_RE = /(?:as\s+of|(?:for\s+)?(?:the\s+)?week\s+ending)\s+([0-9]{1,2}\s+[A-Za-z]+(?:\s+[0-9]{4})?)/i;
+
+function toText(raw){
+  return raw.replace(/<[^>]+>/g, ' ').replace(/&nbsp;/gi, ' ')
+    .replace(/&deg;/gi, '\u00b0').replace(/&#176;/g, '\u00b0')
+    .replace(/&minus;/gi, '\u2212').replace(/&ntilde;/gi, '\u00f1')
+    .replace(/&[a-z]+;/gi, ' ').replace(/\s+/g, ' ');
+}
+function nearDate(html, at, len){
+  const fwd = html.slice(at, at + len + 400);
+  let m = fwd.match(IOD_DATE_RE);
+  if (m) return m[1];
+  const back = html.slice(Math.max(0, at - 400), at);
+  const all = [...back.matchAll(new RegExp(IOD_DATE_RE.source, 'gi'))];
+  return all.length ? all[all.length - 1][1] : null;
+}
+async function buildIod(){
+  const html = toText(await get(BOM_URL, { headers: { 'Accept': 'text/html' } }));
+  const vm = html.match(IOD_VALUE_RE);
+  if (vm){
+    const asOf = nearDate(html, vm.index || 0, vm[0].length);
+    return { ok: true, value: parseFloat(vm[1].replace('\u2212', '-')), asOf, source: 'BOM' };
+  }
+  const nm = html.match(IOD_NEUTRAL_RE);
+  if (nm){
+    const asOf = nearDate(html, nm.index || 0, nm[0].length);
+    // An undated "neutral" is worthless -- BoM prose from last year parses
+    // just as cleanly -- so it is only reported when it carries a date.
+    if (asOf) return { ok: false, neutral: true, asOf, source: 'BOM',
+                       reason: 'bom reports neutral, no figure published' };
+  }
+  return { ok: false, reason: 'pattern not found' };
+}
+
+/* ------------------------------------------------------------------ main */
+
+const iso = (d) => d.toISOString().slice(0, 10);
+
+async function writeIfChanged(file, obj){
+  const next = JSON.stringify(obj);
+  if (existsSync(file)){
+    try { if ((await readFile(file, 'utf8')) === next) return false; } catch {}
+  }
+  await writeFile(file, next);
+  return true;
+}
+
+async function main(){
+  const variables = (process.env.SST_VARS || 'anom,sst').split(',').map(s => s.trim()).filter(Boolean);
+  await mkdir(path.join(OUT, 'sst'), { recursive: true });
+  const log = [];
+  let hardFail = null;
+
+  for (const v of variables){
+    // Anchor on the date the SERVER gives us, never on today's date -- the
+    // feed runs a day or two behind and guessing asks for frames that do not
+    // exist yet.
+    let newest;
+    try { newest = await fetchFrame(v, '(last)'); }
+    catch (e){ hardFail = `${v}: newest frame failed — ${e.message}`; log.push('FAIL ' + hardFail); continue; }
+
+    const base = Date.parse(newest.date + 'T12:00:00Z');
+    const dates = [newest.date];
+    for (let i = 1; i < WEEKS; i++) dates.push(iso(new Date(base - i * 7 * 864e5)));
+
+    let wrote = 0, have = 0;
+    for (const d of dates){
+      const file = path.join(OUT, 'sst', `${v}-${d}.json`);
+      if (existsSync(file)){ have++; continue; }         // never refetch a frame
+      try {
+        const f = d === newest.date ? newest : await fetchFrame(v, `(${d}T12:00:00Z)`);
+        await writeFile(file, JSON.stringify(f));
+        wrote++;
+      } catch (e){ log.push(`warn ${v} ${d}: ${e.message}`); }
+    }
+
+    const kept = dates.filter(d => existsSync(path.join(OUT, 'sst', `${v}-${d}.json`)));
+    await writeIfChanged(path.join(OUT, 'sst', `index-${v}.json`), {
+      variable: v, dates: kept, newest: newest.date, source: newest.source,
+      lat0: LAT0, lon0: LON0, step: STEP, nlat: newest.nlat, nlon: newest.nlon,
+      scale: 100, fill: FILL, builtAt: new Date().toISOString(),
+    });
+    log.push(`ok   ${v}: newest ${newest.date} via ${newest.source}, ${wrote} new, ${have} cached, ${kept.length} in index`);
+  }
+
+  // Prune frames nobody will ask for again.
+  const cutoff = Date.now() - KEEP_DAYS * 864e5;
+  for (const f of await readdir(path.join(OUT, 'sst'))){
+    const m = f.match(/-(\d{4}-\d{2}-\d{2})\.json$/);
+    if (m && Date.parse(m[1]) < cutoff) await unlink(path.join(OUT, 'sst', f));
+  }
+
+  try {
+    const iod = await buildIod();
+    await writeIfChanged(path.join(OUT, 'iod.json'), { ...iod, builtAt: new Date().toISOString() });
+    log.push(`ok   iod: ${iod.ok ? iod.value + ' °C as of ' + iod.asOf
+                     : iod.neutral ? 'neutral, no figure (' + iod.asOf + ')' : 'FAILED — ' + iod.reason}`);
+    if (!iod.ok && !iod.neutral) hardFail = hardFail || ('iod: ' + iod.reason);
+  } catch (e){
+    log.push('FAIL iod: ' + e.message);
+    hardFail = hardFail || ('iod: ' + e.message);
+  }
+
+  console.log(log.join('\n'));
+  if (process.env.GITHUB_STEP_SUMMARY){
+    const { appendFileSync } = await import('node:fs');
+    appendFileSync(process.env.GITHUB_STEP_SUMMARY, '```\n' + log.join('\n') + '\n```\n');
+  }
+  if (hardFail){ console.error('\nbuild incomplete: ' + hardFail); process.exit(1); }
+}
+
+if (import.meta.url === `file://${process.argv[1]}`) await main();
+
+export { packGrid, buildIod, fetchFrame, toText, IOD_VALUE_RE, IOD_NEUTRAL_RE, IOD_DATE_RE };

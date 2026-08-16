@@ -91,8 +91,12 @@ export function parseProseDate(s){
 
 /* ---------------- the checks ------------------------------------------------ */
 
-export function buildChecks(proxy){
+export function buildChecks(proxy, site){
   const P = (q) => `${proxy}?feed=${q}&t=${Date.now()}`;
+  // The committed data files. These are what the APP actually reads now, so
+  // they are what has to be fresh -- a green Worker means nothing if the daily
+  // builder stopped committing.
+  const S = (p) => `${site.replace(/\/$/, '')}/${p}?t=${Date.now()}`;
   return [
     // 80 days, not 45: RONI is a 3-month mean labelled by its CENTRE month and
     // published monthly, so its newest value is ~60 days back even when the
@@ -106,7 +110,29 @@ export function buildChecks(proxy){
     { name: 'dmimon (PSL monthly DMI)', url: P('dmimon'), budget: 110,
       check: t => parseDmiMonthly(t) },
 
-    { name: 'sst field (OISST grid)', url: P('sst&var=anom&date=last'), budget: 10,
+    { name: 'built: SST frames', url: S('data/sst/index-anom.json'), budget: 10,
+      check: t => {
+        const ix = JSON.parse(t);
+        if (!ix.dates || !ix.dates.length) throw new Error('index has no dates');
+        if (ix.dates.length < 6) throw new Error(`only ${ix.dates.length} frames in the index`);
+        return { ts: Date.parse(ix.newest + 'T12:00:00Z'),
+                 note: `${ix.newest}, ${ix.dates.length} frames, via ${ix.source}`,
+                 warn: /final/.test(ix.source || '')
+                   ? `built from ${ix.source}, the ~2-week-old final product` : null };
+      } },
+
+    { name: 'built: IOD', url: S('data/iod.json'), budget: 21,
+      check: t => {
+        const o = JSON.parse(t);
+        if (o.ok === true) return { ts: parseProseDate(o.asOf), note: `${o.value} °C as of ${o.asOf}` };
+        if (o.neutral === true) return { ts: parseProseDate(o.asOf),
+          note: `BoM reports neutral, no figure (dated ${o.asOf})` };
+        throw new Error(o.reason || 'builder could not scrape BoM');
+      } },
+
+    // Kept as a fallback path, so a WARN here is informational: the app no
+    // longer depends on it.
+    { name: 'sst via Worker (fallback only)', url: P('sst&var=anom&date=last'), budget: 30,
       check: t => {
         const o = JSON.parse(t);
         if (o.ok !== true) throw new Error(o.reason || 'ok:false');
@@ -134,7 +160,7 @@ export function buildChecks(proxy){
         return { ts: parseProseDate(o.issued), note: `${o.status} — issued ${o.issued}` };
       } },
 
-    { name: 'iod (BoM wrap-up)', url: P('iod'), budget: 21,
+    { name: 'iod via Worker (fallback only)', url: P('iod'), budget: 21,
       check: t => {
         const o = JSON.parse(t);
         // Three legitimate outcomes, and only one of them is a fault.
@@ -249,7 +275,8 @@ export function report(rows){
 
 if (import.meta.url === `file://${process.argv[1]}`){
   const proxy = process.env.ENSO_PROXY || 'https://enso-proxy.standphoto.workers.dev';
-  const rows = await runChecks(buildChecks(proxy));
+  const site  = process.env.ENSO_SITE  || 'https://stanleywoosweeleong.github.io/Newemso';
+  const rows = await runChecks(buildChecks(proxy, site));
   const md = report(rows);
   console.log(md);
   if (process.env.GITHUB_STEP_SUMMARY){
