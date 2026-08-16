@@ -188,13 +188,26 @@
   .nmapfull-canvas{flex:1 1 auto;min-height:0;position:relative;background:#f8fafc}
   .nmapfull-canvas .ninocanvas{width:100%;height:100%;border-radius:0;
     touch-action:none}
-  /* The control stack grows when the SST player and its legend appear. Cap it
-     and let it scroll: without this the extra rows pushed the mode buttons off
-     the bottom of the screen with no way to reach them. */
+  /* Phone: one column, capped, scrollable as a last resort. */
   .nmapfull-ctl{flex:0 0 auto;padding:10px 14px;border-top:1px solid var(--line);
-    display:flex;flex-direction:column;gap:8px;max-height:52vh;overflow-y:auto;
+    display:flex;flex-direction:column;gap:8px;max-height:46vh;overflow-y:auto;
     -webkit-overflow-scrolling:touch;
     padding-bottom:calc(10px + env(safe-area-inset-bottom))}
+  /* Anything wider than a phone: pack the groups horizontally. Six stacked rows
+     on a 1900px window overflowed the panel and turned it into a scroll box
+     that had scrolled the projection buttons half out of view -- while the
+     horizontal space sat empty. Nothing is capped or scrolled here; it fits. */
+  @media (min-width:700px){
+    .nmapfull-ctl{flex-flow:row wrap;align-items:center;gap:8px 16px;
+      max-height:none;overflow:visible}
+    .mapctl-sst{display:contents}
+    .nmapfull-ctl > .mapctl{flex:0 0 auto}
+    .nmapfull-ctl .mapread{margin-left:0}
+    .nmapfull-ctl .sstnote{flex:1 1 100%}
+    .nmapfull-ctl #nread-full{margin-left:auto;text-align:right}
+    .nmapfull-ctl .sstlegend{flex:0 1 300px}
+    .nmapfull-ctl .sstseek{min-width:160px}
+  }
   .nmapfull-canvas{min-height:120px}
   .sstnote.bad{color:#b91c1c}
   .sstlbl{margin-left:0;margin-right:2px;font-weight:600;color:#334155;white-space:nowrap}
@@ -618,61 +631,71 @@ function trace(V, ctx, ring, open){
   }
 }
 
-function draw(id){
-  var V=inst(id), cv=document.getElementById('nmap-'+id);
-  if (!cv) return;
-  var ctx=cv.getContext('2d'), P=PROJ[V.proj], i, r, a, c, q, e, fs;
-  ctx.clearRect(0,0,V.w,V.h);
+// Rendering is split in two because almost none of it changes between frames.
+//
+// The ocean, graticule, coastlines, region boxes and labels depend only on the
+// VIEW -- they are identical for every frame of a time-lapse. Re-tracing them
+// per tick cost ~35,000 path operations and pinned playback at 2.5 fps. They
+// are now rendered once into two offscreen layers, cached on the same key as
+// the inverse projection, and blitted. Only the SST field and its isotherm are
+// recomputed per frame.
+//
+// Two layers, not one, because the field belongs BETWEEN them: the ocean and
+// graticule sit under it, and the land paints over its coastline stair-steps.
+var baseCache = {};      // id -> { key, under, over }
+var dataVer = 0;         // bumped by setData, so box tints invalidate the cache
 
-  // ocean / map frame
+function layerCanvas(V){
+  var dpr = Math.min(window.devicePixelRatio || 1, 2);
+  var c = document.createElement('canvas');
+  c.width = Math.round(V.w * dpr); c.height = Math.round(V.h * dpr);
+  var g = c.getContext('2d');
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  return { c: c, g: g };
+}
+
+function buildBase(V){
+  var P = PROJ[V.proj], i, r, a, c, e, q, fs;
+
+  var U = layerCanvas(V), ctx = U.g;
   ctx.beginPath();
-  if (P.sphere) ctx.arc(V.cx,V.cy,V.R,0,7);
-  else { e=P.ext; ctx.rect(V.cx-e[0]/2*V.R, V.cy-e[1]/2*V.R, e[0]*V.R, e[1]*V.R); }
-  ctx.fillStyle='#e0f2fe'; ctx.fill();
-  // A border drawn flush with the canvas edge is half-clipped and reads as a
-  // rendering artefact, so the edge-to-edge projection goes without one.
-  if (!P.fillWidth){ ctx.strokeStyle='#7dd3fc'; ctx.lineWidth=1; ctx.stroke(); }
+  if (P.sphere) ctx.arc(V.cx, V.cy, V.R, 0, 7);
+  else { e = P.ext; ctx.rect(V.cx-e[0]/2*V.R, V.cy-e[1]/2*V.R, e[0]*V.R, e[1]*V.R); }
+  ctx.fillStyle = '#e0f2fe'; ctx.fill();
+  if (!P.fillWidth){ ctx.strokeStyle = '#7dd3fc'; ctx.lineWidth = 1; ctx.stroke(); }
   ctx.save(); ctx.clip();
-
-  // graticule
   ctx.beginPath();
-  for (i=-180;i<=180;i+=30){ (function(lo){ var g=[],la;
-    for (la=-80;la<=80;la+=4) g.push([lo,la]); trace(V,ctx,g,true); })(i); }
-  for (i=-60;i<=60;i+=30){ (function(la){ var g=[],lo;
-    for (lo=-180;lo<=180;lo+=4) g.push([lo,la]); trace(V,ctx,g,true); })(i); }
+  for (i=-180;i<=180;i+=30){ (function(lo){ var g2=[],la;
+    for (la=-80;la<=80;la+=4) g2.push([lo,la]); trace(V,ctx,g2,true); })(i); }
+  for (i=-60;i<=60;i+=30){ (function(la){ var g2=[],lo;
+    for (lo=-180;lo<=180;lo+=4) g2.push([lo,la]); trace(V,ctx,g2,true); })(i); }
   ctx.strokeStyle='rgba(2,132,199,.18)'; ctx.lineWidth=1; ctx.stroke();
+  ctx.restore();
 
-  // SST anomaly field, between the ocean and the coastlines: the land polygons
-  // paint over its edges, which hides the 1.5deg stair-stepping at coastlines.
-  var sstBuf = paintSst(V);
-  if (sstBuf){
-    ctx.imageSmoothingEnabled = true;
-    ctx.drawImage(sstBuf, 0, 0, V.w, V.h);
-    drawIso(ctx, V);
-  }
+  var O = layerCanvas(V); ctx = O.g;
+  ctx.save();
+  ctx.beginPath();
+  if (P.sphere) ctx.arc(V.cx, V.cy, V.R, 0, 7);
+  else { e = P.ext; ctx.rect(V.cx-e[0]/2*V.R, V.cy-e[1]/2*V.R, e[0]*V.R, e[1]*V.R); }
+  ctx.clip();
 
-  // land
   ctx.beginPath();
   LAND.forEach(function(poly){ poly.forEach(function(flat){
-    var g=[], k; for (k=0;k<flat.length;k+=2) g.push([flat[k],flat[k+1]]);
-    trace(V,ctx,g,false);
+    var g2=[], k; for (k=0;k<flat.length;k+=2) g2.push([flat[k],flat[k+1]]);
+    trace(V,ctx,g2,false);
   }); });
   ctx.fillStyle='#cbd5e1'; ctx.fill();
   ctx.strokeStyle='#94a3b8'; ctx.lineWidth=0.6; ctx.stroke();
 
-  // equator
   ctx.beginPath();
-  (function(){ var g=[],lo; for (lo=-180;lo<=180;lo+=3) g.push([lo,0]);
-    trace(V,ctx,g,true); })();
+  (function(){ var g2=[],lo; for (lo=-180;lo<=180;lo+=3) g2.push([lo,0]);
+    trace(V,ctx,g2,true); })();
   ctx.strokeStyle='rgba(2,132,199,.6)'; ctx.setLineDash([5,5]);
   ctx.lineWidth=1; ctx.stroke(); ctx.setLineDash([]);
 
-  // Niño boxes. 3.4 is outlined only — tinting it would paint a blended
-  // colour on top of 3 and 4 and invent a value that is not measured there.
   for (i=0;i<REGIONS.length;i++){
     r=REGIONS[i];
-    a = (DATA.vals && !DATA.stale && typeof DATA.vals[r.id]==='number')
-        ? DATA.vals[r.id] : null;
+    a = (DATA.vals && !DATA.stale && typeof DATA.vals[r.id]==='number') ? DATA.vals[r.id] : null;
     c = (a!==null && !r.key) ? ramp(a) : null;
     ctx.beginPath(); trace(V,ctx,r.ring,false);
     if (c){ ctx.fillStyle='rgba('+c[0]+','+c[1]+','+c[2]+',.60)'; ctx.fill(); }
@@ -681,23 +704,15 @@ function draw(id){
     if (r.key) ctx.setLineDash([7,4]);
     ctx.stroke(); ctx.setLineDash([]);
   }
+  ctx.restore();
 
-  ctx.restore();   // leave the clip BEFORE drawing text -- see note below
-
-  // ---- labels ----------------------------------------------------------
-  // Font is nearly constant, NOT proportional to canvas width: the boxes are
-  // a fixed number of degrees tall, so text that scales with the card just
-  // swamps them on a wide screen.
   var placed = [];
   ctx.textBaseline='middle';
-
-  // Region names first -- they matter most, so they win any contest for space.
   fs = Math.round(clamp(V.w/40, 10, 13));
   ctx.font='700 '+fs+'px system-ui,-apple-system,sans-serif';
   for (i=0;i<REGIONS.length;i++){
     r=REGIONS[i];
     var q0=project(V, r.labLon, 0); if (!q0) continue;
-    // How tall is this box on screen right now? Measure it, don't assume.
     var qa=project(V, r.labLon, r.latN), qb=project(V, r.labLon, r.latS), half=0;
     if (qa) half=Math.max(half, Math.abs(qa[1]-q0[1]));
     if (qb) half=Math.max(half, Math.abs(qb[1]-q0[1]));
@@ -705,8 +720,6 @@ function draw(id){
     place(ctx, placed, (r.id==='1+2' ? 'Niño 1+2' : 'Niño '+r.id),
           q0[0], q0[1]+dy, r.key ? '#92400e' : '#1e293b', 'center', fs);
   }
-
-  // Markers (Malaysia / your orchard, South America) second.
   fs = Math.round(clamp(V.w/46, 9, 12));
   ctx.font='600 '+fs+'px system-ui,-apple-system,sans-serif';
   for (i=0;i<MARKS.length;i++){
@@ -717,6 +730,28 @@ function draw(id){
     place(ctx, placed, trFn(MARKS[i].key), q[0], q[1]+MARKS[i].dy*fs,
           MARKS[i].col, 'center', fs);
   }
+  return { key: baseKey(V), under: U.c, over: O.c };
+}
+function baseKey(V){ return viewKeyOf(V) + '|d' + dataVer; }
+function viewKeyOf(V){
+  return V.proj+'|'+V.rot[0].toFixed(2)+'|'+V.rot[1].toFixed(2)+'|'
+       + V.scale.toFixed(3)+'|'+V.w+'x'+V.h;
+}
+
+function draw(id){
+  var V=inst(id), cv=document.getElementById('nmap-'+id);
+  if (!cv) return;
+  var ctx=cv.getContext('2d'), b=baseCache[id], k=baseKey(V);
+  if (!b || b.key !== k){ b = baseCache[id] = buildBase(V); }
+  ctx.clearRect(0,0,V.w,V.h);
+  ctx.drawImage(b.under, 0, 0, V.w, V.h);
+  var sstBuf = paintSst(id, V);
+  if (sstBuf){
+    ctx.imageSmoothingEnabled = true;
+    ctx.drawImage(sstBuf, 0, 0, V.w, V.h);
+    drawIso(ctx, V);
+  }
+  ctx.drawImage(b.over, 0, 0, V.w, V.h);
 }
 
 // Draw a label at (x,y), nudging it vertically until it clears everything
@@ -875,10 +910,27 @@ function ctlRow(id){
 // dated time-lapse cannot pretend to be today the way a bare number could.
 var SST_FRESH_DAYS = 10, SST_DEAD_DAYS = 45;
 
+// A tick changes only the frame index. Rebuilding innerHTML for that destroyed
+// and recreated the range input mid-drag and re-parsed the legend gradient
+// several times a second. Structural changes still go through sstRow().
+var rowSig = {};
+function sstTick(id){
+  var s = SST.state();
+  var sig = [s.visible, s.variable, s.n, s.playing,
+             SST.ageDays()===null?'-':(SST.ageDays()>45?'d':SST.ageDays()>10?'a':'f')].join('|');
+  if (rowSig[id] !== sig){ rowSig[id] = sig; sstRow(id); return; }
+  var d = document.getElementById('nsstdate-'+id);
+  if (d) d.textContent = s.date || '';
+  var r = document.getElementById('nsstseek-'+id);
+  if (r && String(r.value) !== String(s.i)) r.value = s.i;
+}
+
 function sstRow(id){
   var el = document.getElementById('nsst-'+id);
   if (!el) return;
   var s = SST.state(), age = SST.ageDays(), v = s.variable, isSst = (v === 'sst');
+  rowSig[id] = [s.visible, s.variable, s.n, s.playing,
+                age===null?'-':(age>45?'d':age>10?'a':'f')].join('|');
   var dead = (age !== null && age > SST_DEAD_DAYS);
   var aged = (age !== null && age > SST_FRESH_DAYS && !dead);
   // setVisible() mutates state AFTER we snapshotted it, so track visibility
@@ -917,9 +969,10 @@ function sstRow(id){
       ? '<div class="mapctl">'
           +'<button type="button" class="mapbtn zbtn" style="min-width:38px" '
             +'onclick="NinoMap.SST.toggle()">'+(s.playing?'\u2758\u2758':'\u25b6')+'</button>'
-          +'<input type="range" class="sstseek" min="0" max="'+(s.n-1)+'" value="'+s.i+'" '
+          +'<input type="range" class="sstseek" id="nsstseek-'+id+'" '
+            +'min="0" max="'+(s.n-1)+'" value="'+s.i+'" '
             +'oninput="NinoMap.SST.seek(this.value)">'
-          +'<span class="mapread sstdate">'+(s.date||'')+'</span>'
+          +'<span class="mapread sstdate" id="nsstdate-'+id+'">'+(s.date||'')+'</span>'
         +'</div>'
         +'<div class="sstlegend">'
           +'<span>'+(isSst ? '16\u00b0' : '\u22123.0')+'</span>'
@@ -1041,6 +1094,7 @@ function syncZoom(id){
 }
 function setData(vals, stale, week){
   DATA = { vals:vals||null, stale:!!stale, week:week||null };
+  dataVer++;                       // box tints live in the cached base layer
   Object.keys(INST).forEach(function(id){
     if (document.getElementById('nmap-'+id)) draw(id);
   });
@@ -1061,7 +1115,11 @@ var STEP_PX = 2;          // paint every 2nd pixel, then smooth-scale up
 var frames  = {};         // date -> { g:Int16Array, nlat, nlon, lat0, lon0, step, fill }
 var order   = [];         // dates, oldest first
 var idx     = 0, playing = false, timer = null, visible = false;
-var invKey  = '', invLL = null, invW = 0, invH = 0;
+// PER INSTANCE. These were single globals, and with two maps mounted (the
+// fullscreen one and the card preview) each paint evicted the other's cache,
+// so every tick re-solved the whole Newton grid -- 126,000 solves a frame.
+// The cache only helps if it is keyed by the thing that varies: the instance.
+var invCache = {};
 var host    = null;       // the map instance id this layer paints into
 var onChange = function(){};
 
@@ -1155,19 +1213,24 @@ function rampCss(mode){
 }
 
 /* ---- the expensive part, done once per view ---- */
+// Keep the painted buffer roughly constant regardless of canvas size. At a
+// 1200px-wide desktop map a fixed 2px step meant 126,000 samples per frame;
+// the field is 1.5deg data, so that resolution buys nothing visible.
+function stepFor(V){ return Math.max(2, Math.ceil(V.w / 320)); }
+
 function buildInverse(V, PROJ, unrot, latOf){
-  var w = Math.ceil(V.w / STEP_PX), h = Math.ceil(V.h / STEP_PX);
+  var st = stepFor(V);
+  var w = Math.ceil(V.w / st), h = Math.ceil(V.h / st);
   var ll = new Float32Array(w * h * 2), P = PROJ[V.proj], i = 0, px, py, c, u;
   for (py = 0; py < h; py++){
     for (px = 0; px < w; px++, i++){
-      c = P.inv((px*STEP_PX + STEP_PX/2 - V.cx) / V.R,
-                (py*STEP_PX + STEP_PX/2 - V.cy) / V.R);
+      c = P.inv((px*st + st/2 - V.cx) / V.R, (py*st + st/2 - V.cy) / V.R);
       if (!c){ ll[i*2] = NaN; continue; }
       u = unrot(c[0], c[1], V.rot[0], latOf(V));
       ll[i*2] = u[0]; ll[i*2+1] = u[1];
     }
   }
-  invLL = ll; invW = w; invH = h;
+  return { ll:ll, w:w, h:h };
 }
 function viewKey(V){
   return V.proj+'|'+V.rot[0].toFixed(2)+'|'+V.rot[1].toFixed(2)+'|'
@@ -1175,8 +1238,7 @@ function viewKey(V){
 }
 
 /* ---- paint the current frame into a small canvas ---- */
-var buf = null, bctx = null;
-function paint(V, PROJ, unrot, latOf){
+function paint(id, V, PROJ, unrot, latOf){
   if (!visible || !order.length) return null;
   var F = frames[order[idx]];
   if (!F) return null;
@@ -1184,16 +1246,26 @@ function paint(V, PROJ, unrot, latOf){
   var mode = (F.variable === 'sst') ? 'sst' : 'anom';
   var RAMP = RAMPS[mode];
 
-  var k = viewKey(V);
-  if (k !== invKey){ buildInverse(V, PROJ, unrot, latOf); invKey = k; }
-
-  if (!buf){
-    buf = document.createElement('canvas');
-    bctx = buf.getContext('2d');
+  var C = invCache[id], k = viewKey(V);
+  if (!C || C.key !== k){
+    var built = buildInverse(V, PROJ, unrot, latOf);
+    C = invCache[id] = { key:k, ll:built.ll, w:built.w, h:built.h,
+                         buf:null, bctx:null, img:null };
   }
-  if (buf.width !== invW || buf.height !== invH){ buf.width = invW; buf.height = invH; }
+  var invLL = C.ll, invW = C.w, invH = C.h;
 
-  var img = bctx.createImageData(invW, invH), d = img.data;
+  if (!C.buf){
+    C.buf = document.createElement('canvas');
+    C.bctx = C.buf.getContext('2d');
+  }
+  if (C.buf.width !== invW || C.buf.height !== invH){
+    C.buf.width = invW; C.buf.height = invH; C.img = null;
+  }
+  var buf = C.buf, bctx = C.bctx;
+  // Reuse the pixel buffer instead of allocating half a megabyte every tick.
+  if (!C.img) C.img = bctx.createImageData(invW, invH);
+  var img = C.img, d = img.data;
+  d.fill(0);
   var n = invW * invH, i, lon, lat, v, ri;
   for (i = 0; i < n; i++){
     lon = invLL[i*2];
@@ -1252,11 +1324,16 @@ function isotherm(F, level){
   }
   return segs;
 }
+var isoCache = { key:null, segs:null };
 function isoSegments(){
   if (!visible || !order.length) return null;
   var F = frames[order[idx]];
   if (!F || F.variable !== 'sst') return null;   // meaningless on an anomaly field
-  return isotherm(F, ISO_LEVEL);
+  // Same frame, same contour. Marching squares over 5,000 cells is cheap but
+  // not free, and playback asks for it 2-3 times a second.
+  var k = order[idx] + '|' + ISO_LEVEL;
+  if (isoCache.key !== k){ isoCache = { key:k, segs:isotherm(F, ISO_LEVEL) }; }
+  return isoCache.segs;
 }
 
 /* ---- playback ---- */
@@ -1272,7 +1349,7 @@ function play(){
 }
 function toggle(){ playing ? stop() : play(); }
 function seek(i){ stop(); idx = Math.max(0, Math.min(order.length-1, i|0)); onChange(); }
-function setVisible(on){ visible = !!on; if (!visible) stop(); invKey = ''; onChange(); }
+function setVisible(on){ visible = !!on; if (!visible) stop(); invCache = {}; onChange(); }
 
 function state(){
   var F = order.length ? frames[order[idx]] : null;
@@ -1288,7 +1365,7 @@ function ageDays(){
   if (!d) return null;
   return (Date.now() - Date.parse(d + 'T12:00:00Z')) / 864e5;
 }
-function reset(){ frames = {}; order = []; idx = 0; stop(); invKey=''; }
+function reset(){ frames = {}; order = []; idx = 0; stop(); invCache={}; isoCache={key:null,segs:null}; }
 
 // Frames are keyed by DATE alone, so anom and sst slices for the same day
 // would overwrite each other and leave the field half one variable and half
@@ -1321,21 +1398,26 @@ return { addFrame:addFrame, paint:paint, play:play, stop:stop, toggle:toggle,
          isoSegments:isoSegments, rampCss:rampCss, isoLevel:ISO_LEVEL,
          _isotherm:isotherm, _ramps:function(){ if(!RAMPS) buildRamps(); return RAMPS; },
          _sample:sample, _rampIdx:rampIdx, _frames:function(){ return frames; },
-         _invSize:function(){ return [invW, invH]; } };
+         _invCache:function(){ return invCache; } };
 })();
 
 // Any frame change or playback tick redraws every mounted map and refreshes
 // the player row (date label, play/pause glyph, slider position).
 SST.onChange(function(){
+  // While the fullscreen map is open the card previews are behind it. Redrawing
+  // them per tick doubled the cost of every frame for pixels nobody can see.
+  var ov = document.getElementById('nmapfull');
+  var only = (ov && ov.classList && ov.classList.contains('show')) ? 'full' : null;
   Object.keys(INST).forEach(function(id){
+    if (only && id !== only) return;
     if (document.getElementById('nmap-'+id)) draw(id);
-    if (document.getElementById('nsst-'+id)) sstRow(id);
+    if (document.getElementById('nsst-'+id)) sstTick(id);
   });
 });
 
 // The SST layer needs the same projection maths; hand it the internals rather
 // than letting it re-derive them.
-function paintSst(V){ return SST.paint(V, PROJ, unrot, latOf); }
+function paintSst(id, V){ return SST.paint(id, V, PROJ, unrot, latOf); }
 
 // The 28degC isotherm, projected as a real polyline. Segments are independent,
 // so each is drawn on its own -- and any segment straddling the seam in the
@@ -1379,7 +1461,7 @@ function drawIso(ctx, V){
    rebuilt on drag-END, not during a drag.
    ========================================================================== */
 return { markup:markup, mount:mount, setProj:setProj, setView:setView, zoom:zoom,
-         SST:SST, _paintSst:paintSst, sstRow:sstRow,
+         SST:SST, _paintSst:paintSst, sstRow:sstRow, sstTick:sstTick,
          openFull:openFull, closeFull:closeFull, fullShell:fullShell, ctlRow:ctlRow,
          setData:setData, setI18n:setI18n, resizeAll:resizeAll,
          REGIONS:REGIONS, _ramp:ramp, _cutRing:cutRing, _PROJ:PROJ,
