@@ -2699,6 +2699,13 @@ function load(){
     + tr('loading') + '</div></div>';
   // IOD and MJO are bonus feeds: if either fails we still show ENSO. Their
   // fetches never reject the whole Promise.all — they resolve to null on failure.
+  // BoM 403s Cloudflare IPs whatever headers the Worker sends, so the daily
+  // builder scrapes it from the runner and commits the result. The Worker call
+  // stays as a fallback for a first load before the builder has ever run.
+  var iodStatic = null;
+  var iodStaticFeed = fetch('./data/iod.json', { cache: 'no-cache' })
+    .then(function(r){ return r.ok ? r.text() : null; })
+    .then(function(t){ iodStatic = t; }).catch(function(){});
   var iodFeed = getFeed('iod').catch(function(){ return null; });
   var mjoFeed = getFeed('mjo').catch(function(){ return null; });
   // Monsoon status + surge index: computed from Open-Meteo 925-hPa winds,
@@ -2709,7 +2716,8 @@ function load(){
   // failure resolves to null rather than taking the whole load down.
   var dmiFeed = getFeed('dmimon').catch(function(){ return null; });
   sstLoad();   // fire and forget: the map works fine without it
-  Promise.all([ getFeed('roni'), getFeed('weekly'), iodFeed, mjoFeed, monFeed, outFeed, dmiFeed ])
+  Promise.all([ getFeed('roni'), getFeed('weekly'), iodFeed, mjoFeed, monFeed, outFeed, dmiFeed,
+                iodStaticFeed ])
     .then(function(res){
       var roni = parseSeasonal(res[0], 2);   // RONI anom in col 2
       var weekly = parseWeekly(res[1]);
@@ -2717,7 +2725,7 @@ function load(){
       // IOD comes back as JSON {ok,value,asOf} from the Worker's BOM scrape.
       // BoM weekly first; the monthly chain only fills in when BoM gives us
       // no usable figure (event over, wording changed, Worker down).
-      var iod = withMonthlyIod(parseIod(res[2]), res[6]);
+      var iod = withMonthlyIod(parseIod(iodStatic || res[2]), res[6]);
       var mjo = parseMJO(res[3]);
       var mon = res[4]; // already a computed object (or null)
       var out = parseOutlook(res[5]);
@@ -3363,10 +3371,51 @@ window.addEventListener('load', boot);
 // 12 weeks matches the weekly Nino 3.4 card, so the field and the numbers are
 // telling the same story over the same window.
 var SST_WEEKS = 12;
+
+// Frames come from static files this repo commits daily, not from the Worker.
+//
+// ERDDAP could never be made dependable from inside a Worker: seconds per
+// query, 403/522 from Cloudflare IPs, and on 16 Aug 2026 it returned the
+// near-real-time product at 12:12 and the two-week-old final one at 12:24 with
+// nothing changed. The GitHub runner fetches it with minutes to spare and
+// commits the result; these are same-origin reads -- no CORS, no proxy, no
+// timeout -- and the service worker caches them for offline use.
+//
+// The Worker path stays as a fallback for a first load before the builder has
+// ever run.
+function sstStatic(v){
+  return fetch('./data/sst/index-' + v + '.json', { cache: 'no-cache' })
+    .then(function(r){ if (!r.ok) throw new Error('no index'); return r.json(); })
+    .then(function(ix){
+      if (!ix || !ix.dates || !ix.dates.length) throw new Error('empty index');
+      return Promise.all(ix.dates.slice(0, SST_WEEKS).map(function(d){
+        return fetch('./data/sst/' + v + '-' + d + '.json')
+          .then(function(r){ return r.ok ? r.json() : null; })
+          .catch(function(){ return null; });
+      })).then(function(frames){
+        var got = 0;
+        frames.forEach(function(f){
+          // Drop a frame that lands after the user switched variable, exactly
+          // as on the Worker path.
+          if (f && f.ok === true && f.variable === NinoMap.SST.getVariable()){
+            NinoMap.SST.addFrame(f); got++;
+          }
+        });
+        if (!got) throw new Error('no usable frames');
+        NinoMap.sstRow('full');
+        return got;
+      });
+    });
+}
+
 function sstLoad(varName){
   if (typeof NinoMap === 'undefined' || !NinoMap.SST) return;
   var v = (varName === 'sst') ? 'sst' : 'anom';
-  getFeed('sst&var=' + v + '&date=last').then(function(txt){
+  sstStatic(v).catch(function(){ sstWorker(v); });
+}
+
+function sstWorker(v){
+  return getFeed('sst&var=' + v + '&date=last').then(function(txt){
     var o = JSON.parse(txt);
     if (!o || o.ok !== true) return;
     if (o.variable !== NinoMap.SST.getVariable()) return;
