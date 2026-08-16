@@ -1544,6 +1544,8 @@ var T = {
                en:'IOD = the east–west sea-temperature gradient across the Indian Ocean. It directly affects Malaysian rainfall, especially the eastern side (near Sumatra). From BOM, updated weekly.'},
   iodLatest:  {zh:'最新值 (IOD)', en:'Latest (IOD)'},
   iodSrc:     {zh:'数据来源', en:'Source'},
+  iodComputedNote:{zh:'ℹ️ 澳洲气象局（BOM）目前拒绝我们的自动抓取，所以这个 IOD 数值是我们自己算的：取 NOAA OISST 海温距平，西印度洋（50–70°E, 10°S–10°N）平均减去东南印度洋（90–110°E, 10°S–赤道）平均，即标准 DMI 定义。每周更新。与 BOM 公布的数字可能略有出入 —— 看正负与趋势，不要当作 BOM 的官方值。',
+                   en:'ℹ️ Australia’s BOM currently refuses our automated requests, so this IOD value is computed here: mean NOAA OISST anomaly over the west box (50–70°E, 10°S–10°N) minus the south-east box (90–110°E, 10°S–equator) — the standard DMI definition. Updated weekly. It may differ slightly from BOM’s published figure, so read the sign and the trend, not the exact number.'},
   iodMonthlyNote:{zh:'ℹ️ BOM 本周没有公布 IOD 数值，所以这里显示的是备用的【月度】DMI（NOAA PSL，HadISST），月份：{m}。月度值本来就会落后一到两个月，适合看季节方向，不适合当作「本周」的依据。',
                   en:'ℹ️ BOM published no IOD figure this week, so this is the fallback MONTHLY DMI (NOAA PSL, HadISST) for {m}. A monthly value naturally runs one to two months behind — useful for the seasonal direction, not as a reading for this week.'},
   iodAgedMon: {zh:'⚠️ 月度 DMI 的最新月份为 {m}，已超过月度源的正常延迟。数值仍列出供参考，但不据此给出农事建议。',
@@ -2125,6 +2127,20 @@ function seasonPlain(code){
 // The monthly value is NEVER silently substituted: it is flagged monthly:true
 // so the card labels it, states its month, and judges its age on a monthly
 // yardstick instead of a weekly one.
+// Order of preference: BoM's published weekly figure, then our own weekly DMI
+// computed from OISST, then the PSL monthly value. The computed one outranks
+// the monthly because it is WEEKLY and current -- PSL runs two to three months
+// behind -- but it is labelled, because it is not the number BoM publishes.
+function withComputedDmi(iod, dmi){
+  if (iod && iod.ok === true && !iod.monthly) return iod;      // BoM figure wins
+  if (!dmi || dmi.ok !== true || typeof dmi.value !== 'number') return iod;
+  var MN = ['January','February','March','April','May','June','July',
+            'August','September','October','November','December'];
+  var d = new Date(dmi.date + 'T12:00:00Z');
+  return { ok:true, value:dmi.value, computed:true, src:dmi.source,
+           asOf: d.getUTCDate() + ' ' + MN[d.getUTCMonth()] + ' ' + d.getUTCFullYear() };
+}
+
 function withMonthlyIod(iod, dmiText){
   if (iod && iod.ok === true && typeof iod.value === 'number') return iod;
   var m = parseDmiMonthly(dmiText);
@@ -2182,8 +2198,9 @@ function iodCard(iod){
   }
   html += '<div class="row" style="margin-top:8px"><span class="k">'+tr('iodLatest')+'</span><span class="v '+pClass+'">'+(asOfTxt?asOfTxt+' · ':'')+fmt(v)+'</span></div>'
     +'<div class="row"><span class="k">'+tr('iodSrc')+'</span><span class="v iodsrc">'
-      +(iod.monthly ? 'NOAA PSL' : 'BOM')+'</span></div>'
-    +(iod.monthly ? '<div class="iodneutral">'+tr('iodMonthlyNote').replace('{m}', iod.ym||asOfTxt)+'</div>' : '')
+      +(iod.monthly ? 'NOAA PSL' : iod.computed ? 'NOAA OISST' : 'BOM')+'</span></div>'
+    +(iod.monthly ? '<div class="iodneutral">'+tr('iodMonthlyNote').replace('{m}', iod.ym||asOfTxt)+'</div>'
+     : iod.computed ? '<div class="iodneutral">'+tr('iodComputedNote')+'</div>' : '')
   +'</div>';
   return html;
 }
@@ -2706,6 +2723,13 @@ function load(){
   var iodStaticFeed = fetch('./data/iod.json', { cache: 'no-cache' })
     .then(function(r){ return r.ok ? r.text() : null; })
     .then(function(t){ iodStatic = t; }).catch(function(){});
+  // BoM blocks Cloudflare AND GitHub runners, so the builder computes the DMI
+  // from the same OISST analysis the SST layer uses. Weekly and current, where
+  // the PSL monthly fallback runs two to three months behind.
+  var dmiComputed = null;
+  var dmiFeedStatic = fetch('./data/dmi.json', { cache: 'no-cache' })
+    .then(function(r){ return r.ok ? r.json() : null; })
+    .then(function(o){ dmiComputed = o; }).catch(function(){});
   var iodFeed = getFeed('iod').catch(function(){ return null; });
   var mjoFeed = getFeed('mjo').catch(function(){ return null; });
   // Monsoon status + surge index: computed from Open-Meteo 925-hPa winds,
@@ -2717,7 +2741,7 @@ function load(){
   var dmiFeed = getFeed('dmimon').catch(function(){ return null; });
   sstLoad();   // fire and forget: the map works fine without it
   Promise.all([ getFeed('roni'), getFeed('weekly'), iodFeed, mjoFeed, monFeed, outFeed, dmiFeed,
-                iodStaticFeed ])
+                iodStaticFeed, dmiFeedStatic ])
     .then(function(res){
       var roni = parseSeasonal(res[0], 2);   // RONI anom in col 2
       var weekly = parseWeekly(res[1]);
@@ -2725,7 +2749,7 @@ function load(){
       // IOD comes back as JSON {ok,value,asOf} from the Worker's BOM scrape.
       // BoM weekly first; the monthly chain only fills in when BoM gives us
       // no usable figure (event over, wording changed, Worker down).
-      var iod = withMonthlyIod(parseIod(iodStatic || res[2]), res[6]);
+      var iod = withComputedDmi(withMonthlyIod(parseIod(iodStatic || res[2]), res[6]), dmiComputed);
       var mjo = parseMJO(res[3]);
       var mon = res[4]; // already a computed object (or null)
       var out = parseOutlook(res[5]);
