@@ -556,8 +556,19 @@ function inst(id){
                               rotate:false };
   return INST[id];
 }
+// The EFFECTIVE latitude rotation. Read through this everywhere -- never
+// V.rot[1] directly.
+//
+// A lon-only projection must be guaranteed flat no matter which setter last
+// touched the state. Zeroing rot[1] in setProj was not enough: setView('my')
+// sets [-108,-2], so choosing Malaysia after switching to E re-introduced a 2
+// degree tilt, which in equirectangular bends the equator into a shallow sine
+// wave about 4px deep. Gating at the point of USE means no setter can leak a
+// tilt in, and the tilt is still remembered for O and W3 when you switch back.
+function latOf(V){ return PROJ[V.proj].lonOnly ? 0 : V.rot[1]; }
+
 function project(V, lon, lat){
-  var r = rot(lon,lat,V.rot[0],V.rot[1]);
+  var r = rot(lon,lat,V.rot[0],latOf(V));
   var q = PROJ[V.proj].fwd(r[0], r[1]);
   if (!q) return null;
   return [V.cx+q[0]*V.R, V.cy+q[1]*V.R];
@@ -565,7 +576,7 @@ function project(V, lon, lat){
 
 function trace(V, ctx, ring, open){
   var P=PROJ[V.proj], i, l, p, q, x, y, started=false, prev=null, pieces, piece, j;
-  var r = ring.map(function(pt){ return rot(pt[0],pt[1],V.rot[0],V.rot[1]); });
+  var r = ring.map(function(pt){ return rot(pt[0],pt[1],V.rot[0],latOf(V)); });
   if (open){                            // polylines: break, never close
     for (i=0;i<r.length;i++){
       l=r[i][0]; p=r[i][1];
@@ -760,7 +771,7 @@ function bind(id){
     }
     if (out){
       c=PROJ[V.proj].inv((p[0]-V.cx)/V.R, (p[1]-V.cy)/V.R);
-      if (c) c=unrot(c[0],c[1],V.rot[0],V.rot[1]);
+      if (c) c=unrot(c[0],c[1],V.rot[0],latOf(V));
       out.textContent = c
         ? (Math.abs(c[1]).toFixed(1)+'\u00B0'+(c[1]<0?'S':'N')+'  '
          + Math.abs(c[0]).toFixed(1)+'\u00B0'+(c[0]<0?'W':'E'))
@@ -892,10 +903,7 @@ function fullShell(){
 }
 function setProj(id, p){
   var V=inst(id), box=document.getElementById('nctl-'+id), b, i;
-  V.proj=p;
-  // Tilt carries across a projection change, except into a lon-only one, where
-  // a leftover tilt would render an oblique map the user cannot undo by dragging.
-  if (PROJ[p].lonOnly) V.rot[1]=0;
+  V.proj=p;   // tilt is remembered; latOf() decides whether it is applied
   if (box){ b=box.querySelectorAll('[data-proj]');
     for (i=0;i<b.length;i++) b[i].classList.toggle('on', b[i].getAttribute('data-proj')===p); }
   sizeTo(id);
