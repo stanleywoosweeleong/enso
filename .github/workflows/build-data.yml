@@ -54,5 +54,5 @@ jobs:
       - name: Fail if the build was incomplete
         if: steps.build.outcome == 'failure'
         run: |
-          echo "::error::build-data reported an incomplete build — see the job summary"
+          echo "::error::build-data: ${{ steps.build.outputs.reason || 'incomplete build — see the job summary' }}"
           exit 1
