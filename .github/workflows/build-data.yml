@@ -5,7 +5,11 @@ name: Build data
 # retrying — which is the whole reason the fetching moved off the request path.
 on:
   schedule:
+    # Twice: ERDDAP rate-limits, so one run fetches at most 6 new frames. A cold
+    # start therefore fills over a few runs rather than in one 24-request burst,
+    # which is exactly what earned a 403 on 16 Aug 2026.
     - cron: '40 19 * * *'
+    - cron: '40 15 * * *'
   workflow_dispatch:
   push:
     paths:
