@@ -53,22 +53,40 @@ const WEEKS = 12;          // frames kept, matching the weekly Niño 3.4 card
 const KEEP_DAYS = 120;     // prune frames older than this from the working tree
 const OUT = 'data';
 
+// ERDDAP rate-limits. On 16 Aug 2026 a cold start fetched 12 `anom` frames
+// happily and then got 403 from ALL FOUR sources on the very first `sst`
+// request -- two independent hosts do not fail together, so that is a quota,
+// not an outage. It also explains the Worker flipping between NRT and the
+// final product minutes apart: the budget was sometimes already spent.
+//
+// So: pace the requests, and cap how many NEW frames one run may fetch. Frames
+// are permanent once written, so a cold start simply finishes over a few runs
+// and steady state is one new frame per variable per day -- two requests.
+const PACE_MS = 2500;          // between ERDDAP requests
+const MAX_NEW_PER_RUN = 6;     // across all variables
+const RATE_LIMIT_BACKOFF_MS = 20000;
+
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+
 /* ---------------------------------------------------------------- helpers */
 
 async function get(url, { tries = 3, timeout = 60000, headers = {} } = {}){
-  let last;
+  let last, rateLimited = false;
   for (let i = 1; i <= tries; i++){
     const ac = new AbortController();
     const timer = setTimeout(() => ac.abort(), timeout);
     try {
       const r = await fetch(url, { signal: ac.signal, headers: { 'User-Agent': UA, ...headers } });
       clearTimeout(timer);
-      if (!r.ok){ last = new Error('http ' + r.status); }
+      if (!r.ok){
+        last = new Error('http ' + r.status);
+        // 403/429 here means quota, not refusal -- the same URL worked a
+        // moment ago. Retrying in four seconds just spends more of it.
+        rateLimited = (r.status === 403 || r.status === 429);
+      }
       else return await r.text();
     } catch (e){ clearTimeout(timer); last = e; }
-    // ERDDAP is slow under load rather than down; backing off usually works
-    // where retrying instantly does not.
-    if (i < tries) await new Promise(r => setTimeout(r, 4000 * i));
+    if (i < tries) await sleep(rateLimited ? RATE_LIMIT_BACKOFF_MS : 4000 * i);
   }
   throw last || new Error('failed');
 }
@@ -96,6 +114,14 @@ function packGrid(csv){
            data: Buffer.from(g.buffer).toString('base64') };
 }
 
+let budget = MAX_NEW_PER_RUN, lastCall = 0;
+async function paced(fn){
+  const wait = PACE_MS - (Date.now() - lastCall);
+  if (wait > 0) await sleep(wait);
+  lastCall = Date.now();
+  return fn();
+}
+
 async function fetchFrame(variable, dateSel){
   const q = `${variable}[${dateSel}][(0.0)]`
     + `[(${LAT0}):${STRIDE}:(${LAT1})][(${LON0}):${STRIDE}:(${LON1})]`;
@@ -105,7 +131,7 @@ async function fetchFrame(variable, dateSel){
     for (const host of ERDDAP){
       const tag = `oisst-${ds.name}-${host.name}`;
       try {
-        const csv = await get(host.base + ds.id + '.csv0?' + encodeURIComponent(q));
+        const csv = await paced(() => get(host.base + ds.id + '.csv0?' + encodeURIComponent(q)));
         if (csv.indexOf(',') < 0) { tried.push(tag + ' not-csv'); continue; }
         const p = packGrid(csv);
         return { ...p, variable, source: tag, scale: 100, fill: FILL,
@@ -179,22 +205,33 @@ async function main(){
     // feed runs a day or two behind and guessing asks for frames that do not
     // exist yet.
     let newest;
-    try { newest = await fetchFrame(v, '(last)'); }
-    catch (e){ hardFail = `${v}: newest frame failed — ${e.message}`; log.push('FAIL ' + hardFail); continue; }
+    try { newest = await fetchFrame(v, '(last)'); budget--; }
+    catch (e){
+      // Only fatal when there is nothing at all for this variable. Once frames
+      // exist, a rate-limited run is a pause, not a breakage -- the app keeps
+      // serving what is committed and feed-health watches the age.
+      const held = (await readdir(path.join(OUT, 'sst')).catch(() => []))
+        .filter(f => f.startsWith(v + '-')).length;
+      const msg = `${v}: newest frame failed — ${e.message}`;
+      if (held){ log.push(`warn ${msg} (holding ${held} committed frames)`); }
+      else { hardFail = msg; log.push('FAIL ' + msg); }
+      continue;
+    }
 
     const base = Date.parse(newest.date + 'T12:00:00Z');
     const dates = [newest.date];
     for (let i = 1; i < WEEKS; i++) dates.push(iso(new Date(base - i * 7 * 864e5)));
 
-    let wrote = 0, have = 0;
+    let wrote = 0, have = 0, deferred = 0;
     for (const d of dates){
       const file = path.join(OUT, 'sst', `${v}-${d}.json`);
       if (existsSync(file)){ have++; continue; }         // never refetch a frame
+      if (budget <= 0){ deferred++; continue; }          // finish on the next run
       try {
         const f = d === newest.date ? newest : await fetchFrame(v, `(${d}T12:00:00Z)`);
         await writeFile(file, JSON.stringify(f));
-        wrote++;
-      } catch (e){ log.push(`warn ${v} ${d}: ${e.message}`); }
+        wrote++; budget--;
+      } catch (e){ log.push(`warn ${v} ${d}: ${e.message}`); budget--; }
     }
 
     const kept = dates.filter(d => existsSync(path.join(OUT, 'sst', `${v}-${d}.json`)));
@@ -203,7 +240,8 @@ async function main(){
       lat0: LAT0, lon0: LON0, step: STEP, nlat: newest.nlat, nlon: newest.nlon,
       scale: 100, fill: FILL, builtAt: new Date().toISOString(),
     });
-    log.push(`ok   ${v}: newest ${newest.date} via ${newest.source}, ${wrote} new, ${have} cached, ${kept.length} in index`);
+    log.push(`ok   ${v}: newest ${newest.date} via ${newest.source}, ${wrote} new, ${have} cached, `
+           + `${kept.length} in index${deferred ? `, ${deferred} deferred to the next run` : ''}`);
   }
 
   // Prune frames nobody will ask for again.
