@@ -9,7 +9,8 @@
  *                  got NRT at 12:12 and the two-week-old final product at
  *                  12:24. Nothing had changed. It is latency and load, not a
  *                  block, and no amount of header tuning converges on it.
- *   BoM IOD      — 403 to Cloudflare IPs regardless of headers.
+ *   BoM IOD      — 403 to Cloudflare IPs AND to GitHub runners. Retired
+ *                  entirely; the DMI is computed from OISST instead.
  *
  * The GitHub runner reaches both without trouble: it has minutes rather than
  * milliseconds, and it is not on a datacentre range those servers throttle.
@@ -23,7 +24,7 @@
  * Layout, chosen so the repo does not balloon:
  *   data/sst/index.json           small manifest: grid geometry + dates held
  *   data/sst/anom-YYYY-MM-DD.json one frame, written ONCE and never rewritten
- *   data/iod.json                 tiny, rewritten daily
+ *   data/dmi.json                 tiny, rewritten daily (computed DMI)
  * One new ~8 KB file per variable per day, older ones pruned from the tree.
  */
 
@@ -208,44 +209,13 @@ async function buildDmi(dateSel){
   throw new Error(tried.join(' | '));
 }
 
-/* ------------------------------------------------------------------- IOD */
-
-const BOM_URL = 'https://www.bom.gov.au/climate/enso/';
-const IOD_VALUE_RE = /IOD\)?\s*index\s+(?:is|was)\s*([+\-\u2212]?\d+(?:\.\d+)?)\s*[°º\u00b0]?\s*C/i;
-const IOD_NEUTRAL_RE = /IOD\)?\s*(?:index\s+)?(?:is|are|has|have|now|remains?|returned?|back)[^.]{0,80}?neutral/i;
-const IOD_DATE_RE = /(?:as\s+of|(?:for\s+)?(?:the\s+)?week\s+ending)\s+([0-9]{1,2}\s+[A-Za-z]+(?:\s+[0-9]{4})?)/i;
-
-function toText(raw){
-  return raw.replace(/<[^>]+>/g, ' ').replace(/&nbsp;/gi, ' ')
-    .replace(/&deg;/gi, '\u00b0').replace(/&#176;/g, '\u00b0')
-    .replace(/&minus;/gi, '\u2212').replace(/&ntilde;/gi, '\u00f1')
-    .replace(/&[a-z]+;/gi, ' ').replace(/\s+/g, ' ');
-}
-function nearDate(html, at, len){
-  const fwd = html.slice(at, at + len + 400);
-  let m = fwd.match(IOD_DATE_RE);
-  if (m) return m[1];
-  const back = html.slice(Math.max(0, at - 400), at);
-  const all = [...back.matchAll(new RegExp(IOD_DATE_RE.source, 'gi'))];
-  return all.length ? all[all.length - 1][1] : null;
-}
-async function buildIod(){
-  const html = toText(await get(BOM_URL, { headers: { 'Accept': 'text/html' } }));
-  const vm = html.match(IOD_VALUE_RE);
-  if (vm){
-    const asOf = nearDate(html, vm.index || 0, vm[0].length);
-    return { ok: true, value: parseFloat(vm[1].replace('\u2212', '-')), asOf, source: 'BOM' };
-  }
-  const nm = html.match(IOD_NEUTRAL_RE);
-  if (nm){
-    const asOf = nearDate(html, nm.index || 0, nm[0].length);
-    // An undated "neutral" is worthless -- BoM prose from last year parses
-    // just as cleanly -- so it is only reported when it carries a date.
-    if (asOf) return { ok: false, neutral: true, asOf, source: 'BOM',
-                       reason: 'bom reports neutral, no figure published' };
-  }
-  return { ok: false, reason: 'pattern not found' };
-}
+/* --- BoM: removed ---------------------------------------------------------
+ * The BoM IOD scrape used to live here. It is gone, not disabled: BoM answers
+ * 403 to Cloudflare Workers and to GitHub runners alike, with every User-Agent
+ * and navigation-header combination tried on 16 Aug 2026. There is no request
+ * from CI they will answer, so keeping a tripwire only produced a permanent
+ * amber row that trains you to skim the report. The DMI is computed above.
+ * ------------------------------------------------------------------------ */
 
 /* ------------------------------------------------------------------ main */
 
@@ -333,21 +303,6 @@ async function main(){
     log.push('warn dmi: ' + (e.message || e));
   }
 
-  try {
-    const iod = await buildIod();
-    await writeIfChanged(path.join(OUT, 'iod.json'), { ...iod, builtAt: new Date().toISOString() });
-    log.push(`${iod.ok || iod.neutral ? 'ok  ' : 'warn'} iod: ${iod.ok ? iod.value + ' °C as of ' + iod.asOf
-                     : iod.neutral ? 'neutral, no figure (' + iod.asOf + ')' : 'scrape failed — ' + iod.reason}`);
-    // Deliberately NOT a hard failure. The written file carries the reason,
-    // feed-health reads it and fails the same morning, and the app falls back
-    // to the monthly DMI. Reddening this job too would just be the same alarm
-    // twice a day, which is how people learn to ignore alarms.
-  } catch (e){
-    log.push('warn iod: ' + e.message);
-    await writeIfChanged(path.join(OUT, 'iod.json'),
-      { ok: false, reason: String(e.message || e), builtAt: new Date().toISOString() });
-  }
-
   console.log(log.join('\n'));
   const { appendFileSync } = await import('node:fs');
   if (process.env.GITHUB_STEP_SUMMARY){
@@ -364,4 +319,4 @@ async function main(){
 
 if (import.meta.url === `file://${process.argv[1]}`) await main();
 
-export { packGrid, buildIod, fetchFrame, toText, IOD_VALUE_RE, IOD_NEUTRAL_RE, IOD_DATE_RE };
+export { packGrid, fetchFrame, buildDmi, boxMean, DMI_W, DMI_E };

@@ -134,20 +134,11 @@ export function buildChecks(proxy, site){
                  note: `${o.value} (W ${o.west} / E ${o.east}) via ${o.source}` };
       } },
 
-    // Informational: if BoM ever stops blocking CI we want to know, but it
-    // must not fail the job for a source we have deliberately stopped relying on.
-    { name: 'built: BoM IOD (informational)', url: S('data/iod.json'), budget: 21, soft: true,
-      check: t => {
-        const o = JSON.parse(t);
-        if (o.ok === true) return { ts: parseProseDate(o.asOf), note: `${o.value} °C as of ${o.asOf}` };
-        if (o.neutral === true) return { ts: parseProseDate(o.asOf),
-          note: `BoM reports neutral, no figure (dated ${o.asOf})` };
-        throw new Error(o.reason || 'BoM refuses CI — expected');
-      } },
-
     // Kept as a fallback path, so a WARN here is informational: the app no
     // longer depends on it.
-    { name: 'sst via Worker (fallback only)', url: P('sst&var=anom&date=last'), budget: 30,
+    // The Worker SST path nothing reads unless data/ is missing. Wide budget so
+    // it only speaks when the fallback would actually be useless.
+    { name: 'sst via Worker (fallback only)', url: P('sst&var=anom&date=last'), budget: 45, soft: true,
       check: t => {
         const o = JSON.parse(t);
         if (o.ok !== true) throw new Error(o.reason || 'ok:false');
@@ -175,16 +166,6 @@ export function buildChecks(proxy, site){
         return { ts: parseProseDate(o.issued), note: `${o.status} — issued ${o.issued}` };
       } },
 
-    { name: 'iod via Worker (informational)', url: P('iod'), budget: 21, soft: true,
-      check: t => {
-        const o = JSON.parse(t);
-        // Three legitimate outcomes, and only one of them is a fault.
-        if (o.ok === true) return { ts: parseProseDate(o.asOf), note: `${o.value} °C as of ${o.asOf}` };
-        if (o.neutral === true) return { ts: parseProseDate(o.asOf),
-          note: `BoM reports neutral, no figure (dated ${o.asOf})` };
-        throw new Error(o.reason || 'scrape failed');
-      } },
-
     { name: 'mjo (NOAA ROMI)', url: P('mjo'), budget: 14,
       check: t => {
         const rows = t.split(/\r?\n/).map(l => l.trim().split(/\s+/).map(Number))
@@ -201,17 +182,6 @@ export function buildChecks(proxy, site){
       url: 'https://www.cpc.ncep.noaa.gov/data/indices/RONI.ascii.txt',
       check: t => parseRoni(t) },
 
-    // ONE probe, and it cannot fail the job.
-    //
-    // Two reasons. ERDDAP rate-limits, and the builder needs that quota far
-    // more than the monitor does -- probing both hosts every run was the
-    // monitor competing with the thing it is meant to watch. And the outcome
-    // is already covered: if ERDDAP truly stops answering, the builder stops
-    // committing and 'built: SST frames' ages past its budget. A 403 here is
-    // usually just the quota we spent ourselves.
-    { name: 'upstream: ERDDAP (informational)', direct: true, budget: 6, soft: true,
-      url: 'https://coastwatch.pfeg.noaa.gov/erddap/griddap/ncdcOisst21NrtAgg.das',
-      check: t => dasAge(t) },
   ];
 }
 
