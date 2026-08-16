@@ -177,6 +177,7 @@ export async function runChecks(checks, fetchFn = fetch){
   const out = [];
   for (const c of checks){
     const row = { name: c.name, status: 'FAIL', age: null, note: '' };
+    let bodyText = null;
     try {
       const r = await fetchFn(c.url, { headers: { 'User-Agent': UA } });
       if (!r.ok){
@@ -185,8 +186,13 @@ export async function runChecks(checks, fetchFn = fetch){
         row.note = `HTTP ${r.status}` + (r.status === 403 ? ' (refused, not down — check UA / IP block)' : '');
         out.push(row); continue;
       }
-      const body = await r.text();
-      if (!body || body.length < 40){ row.note = `body only ${body.length} bytes`; out.push(row); continue; }
+      const body = bodyText = await r.text();
+      // No blanket minimum length. A 36-byte body turned out to be
+      // {"ok":false,"reason":"bom http 403"} -- the Worker naming the exact
+      // fault -- and the guard reported "body only 36 bytes" instead, hiding
+      // the one thing worth knowing. Let each parser judge; an unparsable body
+      // produces a real message anyway.
+      if (!body){ row.note = 'empty body'; out.push(row); continue; }
       const res = c.check(body);
       row.age = days(res.ts);
       row.note = res.note;
@@ -202,10 +208,20 @@ export async function runChecks(checks, fetchFn = fetch){
       }
     } catch (e){
       row.note = String(e && e.message || e);
+      // Show what actually came back. Guessing at a parse failure from the
+      // message alone wastes a morning; 120 characters of the body usually
+      // ends the guessing immediately.
+      if (bodyText) row.note += ' — got: ' + snippet(bodyText);
     }
     out.push(row);
   }
   return out;
+}
+
+// One line, no markdown-breaking characters, short enough for a table cell.
+export function snippet(s, n = 120){
+  const t = String(s).replace(/\s+/g, ' ').replace(/\|/g, '/').trim();
+  return (t.length > n ? t.slice(0, n) + '…' : t) || '(empty)';
 }
 
 export function report(rows){
