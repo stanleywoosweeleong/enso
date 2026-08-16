@@ -115,6 +115,9 @@ function packGrid(csv){
            data: Buffer.from(g.buffer).toString('base64') };
 }
 
+// Split across variables. A single shared pool meant `anom` spent all six and
+// `sst` got none -- for as many runs as it took, which is how sst ended up with
+// an empty index while anom looked healthy.
 let budget = MAX_NEW_PER_RUN, lastCall = 0;
 async function paced(fn){
   const wait = PACE_MS - (Date.now() - lastCall);
@@ -221,6 +224,24 @@ async function buildDmi(dateSel){
 
 const iso = (d) => d.toISOString().slice(0, 10);
 
+// Snap a date back to the most recent FRIDAY (UTC).
+//
+// The weekly grid used to be anchored on whatever `(last)` returned, which
+// moves every day as NRT advances. On 16 Aug 2026 newest went from 08-14 to
+// 08-15 and the whole 12-date grid shifted by one day: every frame already on
+// disk was orphaned, nothing matched, and the index was written with
+// "dates":[] -- the app then had a variable it could never load.
+//
+// A fixed weekday makes the grid stable, so a frame fetched once stays valid
+// for the twelve weeks it is wanted. Friday because every frame committed so
+// far already falls on one; changing the phase would orphan them all again.
+const WEEKDAY = 5;                       // 0=Sun … 5=Fri
+function snapWeekly(dateStr){
+  const t = Date.parse(dateStr + 'T12:00:00Z');
+  const back = (new Date(t).getUTCDay() - WEEKDAY + 7) % 7;
+  return iso(new Date(t - back * 864e5));
+}
+
 async function writeIfChanged(file, obj){
   const next = JSON.stringify(obj);
   if (existsSync(file)){
@@ -232,6 +253,7 @@ async function writeIfChanged(file, obj){
 
 async function main(){
   const variables = (process.env.SST_VARS || 'anom,sst').split(',').map(s => s.trim()).filter(Boolean);
+  const perVar = Math.max(2, Math.floor(MAX_NEW_PER_RUN / Math.max(1, variables.length)));
   await mkdir(path.join(OUT, 'sst'), { recursive: true });
   const log = [];
   let hardFail = null;
@@ -240,8 +262,9 @@ async function main(){
     // Anchor on the date the SERVER gives us, never on today's date -- the
     // feed runs a day or two behind and guessing asks for frames that do not
     // exist yet.
+    budget = perVar;                    // fresh allowance for each variable
     let newest;
-    try { newest = await fetchFrame(v, '(last)'); budget--; }
+    try { newest = await fetchFrame(v, '(last)'); }
     catch (e){
       // Only fatal when there is nothing at all for this variable. Once frames
       // exist, a rate-limited run is a pause, not a breakage -- the app keeps
@@ -254,9 +277,14 @@ async function main(){
       continue;
     }
 
-    const base = Date.parse(newest.date + 'T12:00:00Z');
-    const dates = [newest.date];
-    for (let i = 1; i < WEEKS; i++) dates.push(iso(new Date(base - i * 7 * 864e5)));
+    // Build the grid off the snapped anchor, not off `newest` itself.
+    const anchor = snapWeekly(newest.date);
+    const base = Date.parse(anchor + 'T12:00:00Z');
+    const dates = [];
+    for (let i = 0; i < WEEKS; i++) dates.push(iso(new Date(base - i * 7 * 864e5)));
+    if (anchor !== newest.date){
+      log.push(`note ${v}: newest is ${newest.date}, grid anchored on ${anchor} (weekly phase)`);
+    }
 
     let wrote = 0, have = 0, deferred = 0;
     for (const d of dates){
@@ -264,6 +292,7 @@ async function main(){
       if (existsSync(file)){ have++; continue; }         // never refetch a frame
       if (budget <= 0){ deferred++; continue; }          // finish on the next run
       try {
+        // Reuse the `(last)` payload only when it happens to land on the grid.
         const f = d === newest.date ? newest : await fetchFrame(v, `(${d}T12:00:00Z)`);
         await writeFile(file, JSON.stringify(f));
         wrote++; budget--;
@@ -276,6 +305,13 @@ async function main(){
       lat0: LAT0, lon0: LON0, step: STEP, nlat: newest.nlat, nlon: newest.nlon,
       scale: 100, fill: FILL, builtAt: new Date().toISOString(),
     });
+    // An index with no dates is unusable: the app fetches it, finds nothing and
+    // sits on "loading" forever. That is a failure, not a quiet success.
+    if (!kept.length){
+      hardFail = hardFail || `${v}: index would be EMPTY (anchor ${anchor}, budget ${perVar})`;
+      log.push(`FAIL ${v}: no frames on the grid — index left as-is`);
+      continue;
+    }
     log.push(`ok   ${v}: newest ${newest.date} via ${newest.source}, ${wrote} new, ${have} cached, `
            + `${kept.length} in index${deferred ? `, ${deferred} deferred to the next run` : ''}`);
   }

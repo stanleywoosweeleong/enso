@@ -110,10 +110,25 @@ export function buildChecks(proxy, site){
     { name: 'dmimon (PSL monthly DMI)', url: P('dmimon'), budget: 110,
       check: t => parseDmiMonthly(t) },
 
-    { name: 'built: SST frames', url: S('data/sst/index-anom.json'), budget: 10,
+    // BOTH variables. Only anom was checked, so sst could sit with an empty
+    // index and a green board -- which is exactly how it went unnoticed.
+    { name: 'built: SST frames (sst)', url: S('data/sst/index-sst.json'), budget: 10,
       check: t => {
         const ix = JSON.parse(t);
-        if (!ix.dates || !ix.dates.length) throw new Error('index has no dates');
+        if (!ix.dates || !ix.dates.length)
+          throw new Error(`index has NO dates (newest ${ix.newest || '?'}) — the app cannot load this variable`);
+        if (ix.dates.length < 6) throw new Error(`only ${ix.dates.length} frames in the index`);
+        return { ts: Date.parse(ix.newest + 'T12:00:00Z'),
+                 note: `${ix.newest}, ${ix.dates.length} frames, via ${ix.source}` };
+      } },
+
+    { name: 'built: SST frames (anom)', url: S('data/sst/index-anom.json'), budget: 10,
+      check: t => {
+        const ix = JSON.parse(t);
+        // Exactly what happened on 16 Aug 2026: the grid anchor moved, every
+        // cached frame was orphaned and the index was written with dates:[].
+        if (!ix.dates || !ix.dates.length)
+          throw new Error(`index has NO dates (newest ${ix.newest || '?'}) — the app cannot load this variable`);
         if (ix.dates.length < 6) throw new Error(`only ${ix.dates.length} frames in the index`);
         return { ts: Date.parse(ix.newest + 'T12:00:00Z'),
                  note: `${ix.newest}, ${ix.dates.length} frames, via ${ix.source}`,
