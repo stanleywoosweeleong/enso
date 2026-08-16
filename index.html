@@ -169,17 +169,44 @@
     min-width:44px;min-height:34px;padding:0 12px;font-size:17px;font-weight:600;
     line-height:1;display:flex;align-items:center;justify-content:center}
   .mapzoom .zbtn:active{background:#dbe3ea}
-  /* State chip, overlaid on the map corner instead of occupying a control
-     slot. Quiet when off, unmistakable when on. */
-  .rotchip{position:absolute;top:8px;right:8px;z-index:2;font:inherit;
-    font-size:11.5px;font-weight:600;line-height:1;padding:6px 9px;cursor:pointer;
-    border-radius:999px;white-space:nowrap;
-    background:rgba(255,255,255,.82);color:#64748b;border:1px solid var(--line)}
-  .rotchip.on{background:#0c4a6e;border-color:#0c4a6e;color:#fff;
-    box-shadow:0 1px 6px rgba(12,74,110,.35)}
+  /* The card's map is a preview button. No touch-action override anywhere on
+     it, so the page scrolls over it like it would over an image. */
+  .nmapopen{display:block;width:100%;padding:0;border:0;background:transparent;
+    cursor:pointer;position:relative;border-radius:8px;overflow:hidden}
+  .nmapcue{position:absolute;right:8px;bottom:8px;font-size:11.5px;font-weight:600;
+    line-height:1;padding:6px 10px;border-radius:999px;pointer-events:none;
+    background:rgba(12,74,110,.88);color:#fff;box-shadow:0 1px 6px rgba(12,74,110,.3)}
+  /* Fullscreen map. Here touch-action:none is simply correct -- there is
+     nothing behind it that wants the gesture. */
+  .nmapfull{position:fixed;inset:0;z-index:240;background:var(--card);
+    display:none;flex-direction:column}
+  .nmapfull.show{display:flex}
+  .nmapfull-head{display:flex;align-items:center;justify-content:space-between;
+    gap:10px;padding:12px 14px;border-bottom:1px solid var(--line);
+    font-size:15px;font-weight:700;color:#0c4a6e;flex-shrink:0;
+    padding-top:calc(12px + env(safe-area-inset-top))}
+  .nmapfull-canvas{flex:1 1 auto;min-height:0;position:relative;background:#f8fafc}
+  .nmapfull-canvas .ninocanvas{width:100%;height:100%;border-radius:0;
+    touch-action:none}
+  .nmapfull-ctl{flex-shrink:0;padding:10px 14px;border-top:1px solid var(--line);
+    display:flex;flex-direction:column;gap:8px;
+    padding-bottom:calc(10px + env(safe-area-inset-bottom))}
+  body.nmap-locked{overflow:hidden}
+  /* New-build bar. Fixed above everything, including the fullscreen map, so a
+     deploy is never hidden behind whatever the user has open. */
+  .swbar{position:fixed;left:12px;right:12px;bottom:calc(12px + env(safe-area-inset-bottom));
+    z-index:300;display:flex;align-items:center;gap:10px;
+    background:#0c4a6e;color:#fff;border-radius:12px;padding:11px 12px 11px 15px;
+    box-shadow:0 4px 18px rgba(15,23,42,.28);font-size:13.5px;font-weight:600;
+    max-width:560px;margin:0 auto}
+  .swbar span{flex:1}
+  .swbar button{font:inherit;font-size:13px;font-weight:700;cursor:pointer;
+    background:#fff;color:#0c4a6e;border:0;border-radius:8px;padding:8px 13px;
+    min-height:34px;flex-shrink:0}
+  .swbar button:disabled{opacity:.6}
+  .swver{font-variant-numeric:tabular-nums;opacity:.75}
   /* While rotation is armed the canvas is visibly different -- otherwise the
      page not scrolling looks like the app has frozen. */
-  .ninocanvas.rot{box-shadow:0 0 0 2px #0c4a6e;border-radius:8px}
   .mapzoom .zlvl{display:flex;align-items:center;justify-content:center;
     min-width:46px;padding:0 6px;background:#fff;font-size:11.5px;color:var(--muted);
     font-variant-numeric:tabular-nums;
@@ -519,7 +546,6 @@ var langFn = function(){ return 'zh'; };
 function inst(id){
   if (!INST[id]) INST[id] = { proj:'ortho', rot:[140,0], scale:1,
                               w:0, h:0, cx:0, cy:0, R:0, drag:null,
-                              // Touch rotation is OFF until asked for -- see setRotate().
                               rotate:false };
   return INST[id];
 }
@@ -674,9 +700,12 @@ function sizeTo(id){
   var V=inst(id), cv=document.getElementById('nmap-'+id);
   if (!cv || !cv.parentElement) return;
   var w=cv.parentElement.clientWidth || 320;
-  // Winkel/equirect need h >= ~0.61*w to fill the width instead of leaving
-  // big side margins; cap high enough that a wide desktop card still does.
-  var h=Math.round(clamp(w*0.62, 200, 420));
+  // Fullscreen fills whatever height its container gives it. The preview
+  // derives one from its width: Winkel/equirect need h >= ~0.61*w to fill the
+  // width instead of leaving big side margins.
+  var h=(id==='full' && cv.parentElement.clientHeight)
+        ? cv.parentElement.clientHeight
+        : Math.round(clamp(w*0.62, 200, 420));
   var dpr=Math.min(window.devicePixelRatio||1, 2);
   cv.width=Math.round(w*dpr); cv.height=Math.round(h*dpr);
   cv.style.width='100%'; cv.style.height=h+'px';
@@ -698,25 +727,10 @@ function bind(id){
   // A mouse never competes with page scrolling, so it always drags. A finger
   // only drags once rotation is switched on; otherwise we ignore it completely
   // and leave the gesture to the browser's scroller.
-  function touchBlocked(ev){ return ev.pointerType !== 'mouse' && !V.rotate; }
-  // Tap-to-arm. touch-action is read by the browser when a gesture STARTS, so
-  // it cannot be flipped mid-drag -- arming has to happen on a gesture that has
-  // already finished. A tap is that gesture: it ends cleanly, and the next
-  // drag then begins under touch-action:none.
-  var tapAt=null, tapT=0;
+  // Only the fullscreen instance is ever bound, so gestures are unconditional.
+  function touchBlocked(){ return false; }
   cv.addEventListener('pointerdown', function(ev){
-    if (ev.pointerType !== 'mouse'){ tapAt=[ev.clientX,ev.clientY]; tapT=Date.now(); }
-    if (touchBlocked(ev)) return;
     V.drag=pos(ev); cv.setPointerCapture(ev.pointerId); cv.style.cursor='grabbing';
-  });
-  cv.addEventListener('pointerup', function(ev){
-    if (ev.pointerType === 'mouse' || !tapAt) return;
-    var moved = Math.abs(ev.clientX-tapAt[0]) + Math.abs(ev.clientY-tapAt[1]);
-    var quick = Date.now()-tapT < 400;
-    tapAt=null;
-    // A real tap: barely moved, quick, and only ever ARMS. Disarming stays on
-    // the chip, so a stray tap while rotating cannot silently switch it off.
-    if (moved < 10 && quick && !V.rotate) setRotate(id, true);
   });
   function stop(){ V.drag=null; cv.style.cursor='grab'; }
   cv.addEventListener('pointerup', stop);
@@ -727,7 +741,10 @@ function bind(id){
       ev.preventDefault();
       k=90/V.R;
       V.rot[0]=wrap180(V.rot[0]+(p[0]-V.drag[0])*k);
-      if (V.proj==='ortho') V.rot[1]=clamp(V.rot[1]-(p[1]-V.drag[1])*k,-89,89);
+      // Tilt works on EVERY projection. Winkel and equirectangular render an
+      // oblique rotation perfectly well -- it was only ever disabled here to
+      // avoid needing touch-action:none inline, which no longer applies.
+      V.rot[1]=clamp(V.rot[1]-(p[1]-V.drag[1])*k,-89,89);
       V.drag=p; draw(id);
     }
     if (out){
@@ -771,7 +788,7 @@ function bind(id){
   // there looking like a current reading.
   cv.addEventListener('pointerleave', function(){
     var out=document.getElementById('nread-'+id);
-    if (out) out.textContent = trFn(V.rotate ? 'mapHintRot' : 'mapHintScroll');
+    if (out) out.textContent = trFn('mapDragHint');
   });
 
   cv.style.cursor='grab';
@@ -779,49 +796,92 @@ function bind(id){
 function dist(a,b){ var dx=a[0]-b[0], dy=a[1]-b[1]; return Math.sqrt(dx*dx+dy*dy); }
 
 /* ---------- public ---------- */
-function markup(id){
+function ctlRow(id){
   function btn(k, lbl, act, on){
     return '<button type="button" class="mapbtn'+(on?' on':'')+'" data-'+k+'="'+act+'" '
       + 'onclick="NinoMap.'+(k==='proj'?'setProj':'setView')+"('"+id+"','"+act+"')"+'">'
       + lbl+'</button>';
   }
-  return ''
-   +'<div class="nmap" id="nmapbox-'+id+'">'
-     +'<canvas id="nmap-'+id+'" class="ninocanvas"></canvas>'
-     // State indicator and escape hatch, sitting ON the map rather than in the
-     // control row -- it costs a map corner instead of a button slot.
-     +'<button type="button" class="rotchip" data-rot="1" aria-pressed="false"'
-       +' onclick="NinoMap.toggleRotate(\''+id+'\')">'+trFn('mapRotOff')+'</button>'
-     +'<div class="mapfoot">'
-       +'<div class="mapctl" id="nctl-'+id+'">'
-         + btn('proj','O','ortho',true) + btn('proj','E','equi') + btn('proj','W3','winkel')
-         +'<span class="mapgap"></span>'
-         + btn('view', trFn('mapViewPac'), 'pac', true)
-         + btn('view', trFn('mapViewMY'),  'my')
-       +'</div>'
-       // Zoom sits on its own row as ONE segmented control. Left in the wrapping
-       // row above, flex-wrap would break the pair apart and orphan the "+" on a
-       // line by itself, which is what it did at phone width.
-       +'<div class="mapctl mapctl-z">'
-         +'<span class="mapzoom">'
-           +'<button type="button" class="mapbtn zbtn" data-zoom="-1" aria-label="'
-             + trFn('mapZoomOut') + '" onclick="NinoMap.zoom(\''+id+'\',-1)">\u2212</button>'
-           +'<span class="zlvl" id="nzoom-'+id+'" aria-hidden="true">1.0\u00d7</span>'
-           +'<button type="button" class="mapbtn zbtn" data-zoom="1" aria-label="'
-             + trFn('mapZoomIn') + '" onclick="NinoMap.zoom(\''+id+'\',1)">+</button>'
-         +'</span>'
-         +'<span class="mapread" id="nread-'+id+'">'+trFn('mapHintScroll')+'</span>'
-       +'</div>'
+  return '<div class="mapctl" id="nctl-'+id+'">'
+       + btn('proj','O','ortho',true) + btn('proj','E','equi') + btn('proj','W3','winkel')
+       +'<span class="mapgap"></span>'
+       + btn('view', trFn('mapViewPac'), 'pac', true)
+       + btn('view', trFn('mapViewMY'),  'my')
      +'</div>'
+     +'<div class="mapctl mapctl-z">'
+       +'<span class="mapzoom">'
+         +'<button type="button" class="mapbtn zbtn" data-zoom="-1" aria-label="'
+           + trFn('mapZoomOut') + '" onclick="NinoMap.zoom(\''+id+'\',-1)">\u2212</button>'
+         +'<span class="zlvl" id="nzoom-'+id+'" aria-hidden="true">1.0\u00d7</span>'
+         +'<button type="button" class="mapbtn zbtn" data-zoom="1" aria-label="'
+           + trFn('mapZoomIn') + '" onclick="NinoMap.zoom(\''+id+'\',1)">+</button>'
+       +'</span>'
+       +'<span class="mapread" id="nread-'+id+'">'+trFn('mapDragHint')+'</span>'
+     +'</div>';
+}
+
+// The card's map is a PREVIEW: drawn with live tints, but it registers no
+// listeners and sets no touch-action, so the page scrolls over it exactly as it
+// would over a photo. The whole thing is one button that opens the real map.
+function markup(id){
+  return '<div class="nmap" id="nmapbox-'+id+'">'
+     +'<button type="button" class="nmapopen" onclick="NinoMap.openFull(\''+id+'\')">'
+       +'<canvas id="nmap-'+id+'" class="ninocanvas"></canvas>'
+       +'<span class="nmapcue">'+trFn('mapOpen')+'</span>'
+     +'</button>'
    +'</div>';
 }
+
 function mount(id){
   if (!document.getElementById('nmap-'+id)) return;
-  bind(id); sizeTo(id); syncZoom(id); setRotate(id, inst(id).rotate);
+  sizeTo(id); syncZoom(id);       // previews are drawn, never bound
+}
+
+// ---- fullscreen ----------------------------------------------------------
+// Its own instance in its own overlay. Nothing behind it wants to scroll, so it
+// takes every gesture without arbitration: drag on both axes, pinch, wheel.
+var FULL_FROM = null;
+function openFull(fromId){
+  var ov=document.getElementById('nmapfull'), V, F, b, i;
+  if (!ov) return;
+  FULL_FROM = fromId;
+  V=inst(fromId); F=inst('full');
+  F.proj=V.proj; F.rot=[V.rot[0],V.rot[1]]; F.scale=V.scale;   // open where they were
+  ov.querySelector('.nmapfull-ctl').innerHTML = ctlRow('full');
+  ov.classList.add('show');
+  if (document.body.classList) document.body.classList.add('nmap-locked');
+  b=ov.querySelectorAll('[data-proj]');
+  for (i=0;i<b.length;i++) b[i].classList.toggle('on', b[i].getAttribute('data-proj')===F.proj);
+  b=ov.querySelectorAll('[data-view]');
+  for (i=0;i<b.length;i++) b[i].classList.remove('on');
+  // Measure after the overlay is visible, or the canvas sizes to zero.
+  requestAnimationFrame(function(){ bind('full'); sizeTo('full'); syncZoom('full'); });
+}
+function closeFull(){
+  var ov=document.getElementById('nmapfull'), V, F;
+  if (!ov) return;
+  ov.classList.remove('show');
+  if (document.body.classList) document.body.classList.remove('nmap-locked');
+  if (FULL_FROM && INST[FULL_FROM]){       // carry the view back to the card
+    F=inst('full'); V=inst(FULL_FROM);
+    V.proj=F.proj; V.rot=[F.rot[0],F.rot[1]]; V.scale=F.scale;
+    sizeTo(FULL_FROM);
+  }
+  FULL_FROM=null;
+}
+function fullShell(){
+  return '<div class="nmapfull" id="nmapfull">'
+     +'<div class="nmapfull-head">'
+       +'<span>'+trFn('mapCardTitle')+'</span>'
+       +'<button type="button" class="help-x" onclick="NinoMap.closeFull()" aria-label="close">\u2715</button>'
+     +'</div>'
+     +'<div class="nmapfull-canvas"><canvas id="nmap-full" class="ninocanvas"></canvas></div>'
+     +'<div class="nmapfull-ctl"></div>'
+   +'</div>';
 }
 function setProj(id, p){
   var V=inst(id), box=document.getElementById('nctl-'+id), b, i;
-  V.proj=p; if (p!=='ortho') V.rot[1]=0;
+  V.proj=p;   // tilt is preserved across a projection change
   if (box){ b=box.querySelectorAll('[data-proj]');
     for (i=0;i<b.length;i++) b[i].classList.toggle('on', b[i].getAttribute('data-proj')===p); }
   sizeTo(id);
@@ -834,37 +894,18 @@ function setView(id, v){
     for (i=0;i<b.length;i++) b[i].classList.toggle('on', b[i].getAttribute('data-view')===v); }
   sizeTo(id); syncZoom(id);
 }
-// Touch rotation toggle.
+// Interaction model
+// -----------------
+// An inline canvas inside a scrolling list cannot both rotate under a finger
+// and let the page scroll under the same finger: touch-action has to pick one.
+// Every attempt to arbitrate that at gesture level (pan-y, arm-on-tap, a lock
+// chip, per-projection exceptions) traded one away for the other.
 //
-// The canvas cannot both rotate under a finger and let the page scroll under
-// the same finger -- touch-action must pick one. pan-y (the old setting)
-// protected page scrolling but handed every vertical gesture to the browser,
-// which on an orthographic globe is exactly the tilt axis: drags fought the
-// scroller and were cancelled part-way through. none fixes dragging but traps
-// scrolling inside a tall card. So the user chooses, and can see which mode
-// they are in.
-function setRotate(id, on){
-  var V=inst(id), cv=document.getElementById('nmap-'+id);
-  var box=document.getElementById('nmapbox-'+id), hint, b, i;
-  V.rotate = !!on;
-  if (cv){
-    cv.style.touchAction = V.rotate ? 'none' : 'pan-y';
-    if (cv.classList) cv.classList.toggle('rot', V.rotate);
-  }
-  if (box){
-    b=box.querySelectorAll('[data-rot]');
-    for (i=0;i<b.length;i++){
-      if (b[i].classList) b[i].classList.toggle('on', V.rotate);
-      b[i].textContent = trFn(V.rotate ? 'mapRotOn' : 'mapRotOff');
-      b[i].setAttribute('aria-pressed', V.rotate ? 'true' : 'false');
-    }
-  }
-  hint=document.getElementById('nread-'+id);
-  if (hint) hint.textContent = trFn(V.rotate ? 'mapHintRot' : 'mapHintScroll');
-  if (!V.rotate) V.drag=null;
-}
-function toggleRotate(id){ setRotate(id, !inst(id).rotate); }
-
+// So the two jobs are split instead. The card holds a PREVIEW: it renders the
+// real map with live tints, takes no gestures at all, and scrolls like any
+// other block. Tapping it opens the map FULLSCREEN, where nothing else wants
+// the gestures and touch-action:none is simply correct. There, every
+// projection drags on both axes, always, with no modes to learn.
 function setScale(id, s){
   var V=inst(id), n=clamp(s, 0.7, 8);
   if (Math.abs(n-V.scale) < 1e-4) return;
@@ -899,17 +940,10 @@ function resizeAll(){
   });
 }
 window.addEventListener('resize', resizeAll);
-// If the page scrolls, the user has moved on -- disarm, so nobody is left with
-// a map that silently eats their next swipe. While a map is armed and being
-// dragged the page does not scroll, so this cannot fire mid-gesture.
-window.addEventListener('scroll', function(){
-  Object.keys(INST).forEach(function(id){
-    if (INST[id].rotate && !INST[id].drag && document.getElementById('nmap-'+id)) setRotate(id, false);
-  });
-}, { passive:true });
+
 
 return { markup:markup, mount:mount, setProj:setProj, setView:setView, zoom:zoom,
-         toggleRotate:toggleRotate, setRotate:setRotate,
+         openFull:openFull, closeFull:closeFull, fullShell:fullShell, ctlRow:ctlRow,
          setData:setData, setI18n:setI18n, resizeAll:resizeAll,
          REGIONS:REGIONS, _ramp:ramp, _cutRing:cutRing, _PROJ:PROJ,
          _rot:rot, _unrot:unrot };
@@ -1159,13 +1193,9 @@ var T = {
                en:'NOAA CPC tracks the sea-surface temperature anomaly in these four boxes every week. The boxes are drawn in true coordinates and their edges follow the sphere rather than cutting across it. Colour is this week\u2019s anomaly: red = warmer, blue = cooler. Drag to rotate.'},
   mapViewPac: {zh:'太平洋', en:'Pacific'},
   mapViewMY:  {zh:'马来西亚', en:'Malaysia'},
-  mapDragHint:{zh:'拖动旋转 · 滚轮／双指缩放', en:'drag to rotate · wheel/pinch to zoom'},
-  mapRotOff:  {zh:'✋ 旋转', en:'✋ Rotate'},
-  mapRotOn:   {zh:'✋ 旋转中 · 点此结束', en:'✋ Rotating · tap to stop'},
-  mapHintScroll:{zh:'点一下地图即可拖动旋转；现在上下滑动仍可正常翻页。',
-                 en:'Tap the map once to drag it; right now swiping still scrolls the page normally.'},
-  mapHintRot: {zh:'拖动旋转 · 双指缩放 · 在页面其他地方滑动即自动结束',
-               en:'Drag to rotate · pinch to zoom · scrolling elsewhere ends it automatically'},
+  mapDragHint:{zh:'任意方向拖动旋转 · 双指或按钮缩放',
+               en:'Drag any direction to rotate · pinch or use the buttons to zoom'},
+  mapOpen:    {zh:'点开大图', en:'Open full map'},
   mapZoomIn:  {zh:'放大', en:'Zoom in'},
   mapZoomOut: {zh:'缩小', en:'Zoom out'},
   wkChange:   {zh:'较上周', en:'Change vs last week'},
@@ -1173,6 +1203,10 @@ var T = {
   wkRegionsMoved:{zh:'Niño 1+2 / 3 / 4 的本周数值见下方地图卡，不在这里重复。',
                   en:'Niño 1+2 / 3 / 4 for this week are on the map card below, not repeated here.'},
   wkSame:     {zh:'持平', en:'no change'},
+  swNew:      {zh:'已有新版本', en:'A new version is ready'},
+  swReload:   {zh:'立即更新', en:'Update now'},
+  swUpdating: {zh:'更新中\u2026', en:'Updating\u2026'},
+  swBuild:    {zh:'版本', en:'Build'},
   // --- hero: the lag, and the direction of travel ---
   heroLag:    {zh:'RONI 是三个月平均值，上面这个数字描述的是 {s}，比今天落后约 6 周。事件正在发展时，它一定会低估当下。最新一周的 Niño 3.4 见下方。',
                en:'RONI is a three-month mean, so the number above describes {s} — roughly six weeks behind today. While an event is developing it will always understate the present. The latest weekly Niño 3.4 is below.'},
@@ -2459,7 +2493,8 @@ function render(roni, weekly, cachedAt, iod, mjo, mon, out){
   +'</div>'
 
   +'<button class="btn ghost" onclick="load()">'+tr('refresh')+'</button>'
-  +'<button class="btn wabtn" onclick="shareWA()" aria-label="WhatsApp">'+waIcon()+'</button>';
+  +'<button class="btn wabtn" onclick="shareWA()" aria-label="WhatsApp">'+waIcon()+'</button>'
+  +'<div class="swver">'+tr('swBuild')+' <span id="swver">\u2026</span></div>';
 
   document.getElementById('app').innerHTML = html;
 
@@ -2729,6 +2764,17 @@ function helpBackdrop(e){
 function boot(){
   applyLang();
   NinoMap.setI18n(tr);   // module draws its own labels; give it the translator
+  // The fullscreen map lives at body level, outside every scrolling container,
+  // so it is never clipped by a card and never fights the page for gestures.
+  if (!document.getElementById('nmapfull')){
+    var shell = document.createElement('div');
+    shell.innerHTML = NinoMap.fullShell();
+    document.body.appendChild(shell.firstChild);
+  }
+  // Escape / Android back-ish: close the map before anything else.
+  document.addEventListener('keydown', function(e){
+    if (e.key === 'Escape') NinoMap.closeFull();
+  });
   setTimeout(function(){
     var b = document.getElementById('boot');
     if (b) b.style.display='none';
@@ -2736,11 +2782,85 @@ function boot(){
   load();
 }
 window.addEventListener('load', boot);
-// Register the service worker so the app shell works offline.
+// ---- Service worker: register, and actively WATCH for a new build --------
+// Registering alone is not enough. The browser only re-checks sw.js on its own
+// schedule, so a PWA left open for days can miss a deploy entirely. We check on
+// load, whenever the app is brought back to the foreground, whenever the
+// network returns, and every 15 minutes while it stays open.
+var SW_REG = null, SW_RELOADING = false;
+
+function swShowUpdate(reg){
+  if (document.getElementById('swbar')) return;   // already offered
+  var bar = document.createElement('div');
+  bar.id = 'swbar';
+  bar.className = 'swbar';
+  bar.innerHTML = '<span>'+tr('swNew')+'</span>'
+    + '<button type="button" id="swgo">'+tr('swReload')+'</button>';
+  document.body.appendChild(bar);
+  document.getElementById('swgo').onclick = function(){
+    this.disabled = true;
+    this.textContent = tr('swUpdating');
+    // The waiting worker activates, which fires controllerchange below, which
+    // reloads. If anything goes wrong, reload anyway after a moment rather
+    // than leaving the button spinning forever.
+    if (reg.waiting) reg.waiting.postMessage({ type:'SKIP_WAITING' });
+    setTimeout(function(){ if (!SW_RELOADING) location.reload(); }, 2500);
+  };
+}
+
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', function(){
-    navigator.serviceWorker.register('./sw.js').catch(function(){ /* ignore */ });
+    // updateViaCache:'none' — never let an HTTP-cached copy of sw.js hide a
+    // deploy from us.
+    navigator.serviceWorker.register('./sw.js', { updateViaCache: 'none' })
+      .then(function(reg){
+        SW_REG = reg;
+        if (reg.waiting && navigator.serviceWorker.controller) swShowUpdate(reg);
+        reg.addEventListener('updatefound', function(){
+          var nw = reg.installing;
+          if (!nw) return;
+          nw.addEventListener('statechange', function(){
+            // controller check: on a FIRST ever install there is nothing to
+            // update from, so do not nag a new user about a "new version".
+            if (nw.state === 'installed' && navigator.serviceWorker.controller) {
+              swShowUpdate(reg);
+            }
+          });
+        });
+        swCheck();
+        setInterval(swCheck, 15*60*1000);
+        document.addEventListener('visibilitychange', function(){
+          if (!document.hidden) swCheck();
+        });
+        window.addEventListener('online', swCheck);
+        swReportVersion(reg);
+      })
+      .catch(function(){ /* ignore: the app works without it */ });
   });
+
+  // When the new worker takes control, reload once so the page matches it.
+  navigator.serviceWorker.addEventListener('controllerchange', function(){
+    if (SW_RELOADING) return;
+    SW_RELOADING = true;
+    location.reload();
+  });
+}
+
+function swCheck(){ if (SW_REG) SW_REG.update().catch(function(){}); }
+
+// Ask the active worker which build it is and show it in the footer, so a
+// device stuck on an old cache is visible instead of a guess.
+function swReportVersion(reg){
+  var sw = (reg && reg.active) || navigator.serviceWorker.controller;
+  if (!sw || typeof MessageChannel === 'undefined') return;
+  try {
+    var ch = new MessageChannel();
+    ch.port1.onmessage = function(e){
+      var el = document.getElementById('swver');
+      if (el && e.data && e.data.version) el.textContent = e.data.version;
+    };
+    sw.postMessage({ type:'VERSION' }, [ch.port2]);
+  } catch (err) { /* not important enough to fail anything */ }
 }
 // safety: never let boot screen stick
 setTimeout(function(){var b=document.getElementById('boot');if(b)b.style.display='none';},12000);
