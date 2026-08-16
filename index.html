@@ -976,7 +976,9 @@ function sstRow(id){
   // source fails but the two-week-old final product answers inside the freshness
   // budget, everything above reads healthy and the map is quietly a fortnight
   // behind -- the failure with no symptom.
-  var fellBack = s.n && s.source && s.source !== 'oisst-nrt';
+  // The upwell mirror carries the same near-real-time product, so it is not a
+  // downgrade. Only the two-week-old final product is.
+  var fellBack = s.n && s.source && s.source.indexOf('oisst-nrt') !== 0;
   var status =
       dead     ? trFn('sstDead').replace('{d}', s.newest||'?').replace('{n}', age.toFixed(0))
     : !s.n     ? trFn('sstLoading')
