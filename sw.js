@@ -24,7 +24,7 @@
  * message) and shown in the footer, so a stale install is visible rather than
  * something you have to guess at.
  */
-const CACHE_VERSION = "enso-v1.19.0";
+const CACHE_VERSION = "enso-v1.19.2";
 const SHELL = [
   './',
   './index.html',

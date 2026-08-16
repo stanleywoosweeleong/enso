@@ -197,18 +197,35 @@
      on a 1900px window overflowed the panel and turned it into a scroll box
      that had scrolled the projection buttons half out of view -- while the
      horizontal space sat empty. Nothing is capped or scrolled here; it fits. */
+  /* Wider than a phone: a fixed GRID, not a wrapping row.
+     Wrapping re-packs every time a control changes width -- the player and
+     legend appearing, the date digits changing, play becoming pause -- so the
+     buttons drifted around as you used them. Each group now owns a cell and
+     stays in it; an absent block leaves its cell empty instead of pulling the
+     others along. */
   @media (min-width:700px){
-    .nmapfull-ctl{flex-flow:row wrap;align-items:center;gap:8px 16px;
-      max-height:none;overflow:visible}
+    .nmapfull-ctl{display:grid;align-items:center;
+      grid-template-columns:max-content max-content 1fr;
+      gap:8px 16px;max-height:none;overflow:visible}
     .mapctl-sst{display:contents}
-    .nmapfull-ctl > .mapctl{flex:0 0 auto}
-    .nmapfull-ctl .mapread{margin-left:0}
-    .nmapfull-ctl .sstnote{flex:1 1 100%}
+    .nmapfull-ctl > *{min-width:0}
+    #nctl-full        {grid-column:1;grid-row:1}
+    .nmapfull-ctl .mapctl-z {grid-column:2 / 4;grid-row:1}
+    .nmapfull-ctl .sstmode  {grid-column:1;grid-row:2}
+    .nmapfull-ctl .sstplayer{grid-column:2;grid-row:2}
+    .nmapfull-ctl .sstlegend{grid-column:3;grid-row:2;max-width:340px}
+    .nmapfull-ctl .sststatus{grid-column:1 / 4;grid-row:3}
+    .nmapfull-ctl .sstlong  {grid-column:1 / 4;grid-row:4}
+    .nmapfull-ctl .sstseek{width:200px;flex:0 0 auto}
     .nmapfull-ctl #nread-full{margin-left:auto;text-align:right}
-    .nmapfull-ctl .sstlegend{flex:0 1 300px}
-    .nmapfull-ctl .sstseek{min-width:160px}
+    /* Empty status/hint blocks must not reserve a line. */
+    .nmapfull-ctl .sstnote:empty{display:none}
   }
   .nmapfull-canvas{min-height:120px}
+  /* Nothing in the control panel may widen the panel past the screen. */
+  .nmapfull-ctl{overflow-x:hidden}
+  .nmapfull-ctl .mapctl{flex-wrap:wrap;min-width:0}
+  .nmapfull-ctl .sstseek{min-width:0}
   .sstnote.bad{color:#b91c1c}
   .sstlbl{margin-left:0;margin-right:2px;font-weight:600;color:#334155;white-space:nowrap}
   .mapbtn:disabled{opacity:.45;cursor:default}
@@ -216,7 +233,10 @@
   .mapctl-sst{gap:8px}
   .mapctl-sst:empty{display:none}
   .sstseek{flex:1;min-width:70px;accent-color:#0c4a6e;height:26px}
-  .sstdate{margin-left:0;font-weight:600;color:#334155}
+  /* Only the date stays on one line -- it is short, and a fixed width stops the
+     legend beside it jumping every time the digits change. */
+  .sstdate{margin-left:0;font-weight:600;color:#334155;white-space:nowrap;
+    min-width:5.6em;text-align:right}
   .mapctl-sst{flex-direction:column;align-items:stretch;gap:7px}
   .sstlegend{display:flex;align-items:center;gap:7px;font-size:10.5px;
     color:var(--muted);font-variant-numeric:tabular-nums}
@@ -247,7 +267,7 @@
   .mapbtn.zoom{min-width:30px;font-size:14px;font-weight:600;padding:3px 8px}
   .mapbtn:disabled{opacity:.38;cursor:default}
   .mapread{margin-left:auto;font-size:10.5px;color:var(--muted);
-    font-variant-numeric:tabular-nums;white-space:nowrap}
+    font-variant-numeric:tabular-nums;white-space:normal}
   .nregions{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:10px}
   .nreg{border:1px solid var(--line);border-radius:9px;padding:6px 4px;text-align:center}
   .nreg.key{border-color:#f59e0b;background:#fffbeb}
@@ -944,11 +964,13 @@ function sstRow(id){
   // variable -- which clears the store by design -- emptied the whole row, and
   // a stale field replaced it with a warning. Either way every control
   // vanished and there was no way back to the other variable.
-  // Three mutually exclusive states, one row, no name used twice.
+  // Two buttons, each carrying the thermometer so the pair needs no separate
+  // "SST field" label above it -- that label said nothing the buttons did not.
+  // Each one also switches itself off, so there is no third Off button either.
   function sbtn(key, lbl, active){
     return '<button type="button" class="mapbtn'+(active?' on':'')+'"'
-      + (dead && key!=='off' ? ' disabled' : '')
-      +' onclick="NinoMap.SST.show(\''+key+'\')">'+trFn(lbl)+'</button>';
+      + (dead ? ' disabled' : '')
+      +' onclick="NinoMap.SST.show(\''+key+'\')">\ud83c\udf21 '+trFn(lbl)+'</button>';
   }
   var status =
       dead   ? trFn('sstDead').replace('{d}', s.newest||'?').replace('{n}', age.toFixed(0))
@@ -958,15 +980,13 @@ function sstRow(id){
   var src = (status && s.source) ? ' \u00b7 ' + s.source : '';
 
   el.innerHTML =
-     '<div class="mapctl">'
-       +'<span class="mapread sstlbl">'+trFn('sstField')+'</span>'
-       + sbtn('off',  'sstOff',      !vis)
+     '<div class="mapctl sstmode">'
        + sbtn('anom', 'sstVarAnom',  vis && v === 'anom')
        + sbtn('sst',  'sstVarSst',   vis && v === 'sst')
      +'</div>'
-   + (status ? '<div class="mapread sstnote'+(dead?' bad':'')+'">'+status+src+'</div>' : '')
+   + '<div class="mapread sstnote sststatus'+(dead?' bad':'')+'">'+(status?status+src:'')+'</div>'
    + (vis && s.n
-      ? '<div class="mapctl">'
+      ? '<div class="mapctl sstplayer">'
           +'<button type="button" class="mapbtn zbtn" style="min-width:38px" '
             +'onclick="NinoMap.SST.toggle()">'+(s.playing?'\u2758\u2758':'\u25b6')+'</button>'
           +'<input type="range" class="sstseek" id="nsstseek-'+id+'" '
@@ -979,8 +999,8 @@ function sstRow(id){
           +'<i style="background:'+SST.rampCss(v)+'"></i>'
           +'<span>'+(isSst ? '32\u00b0C' : '+3.0')+'</span>'
         +'</div>'
-        +'<div class="mapread sstnote">'+ trFn(isSst ? 'sstNoteSst' : 'sstNoteAnom') +'</div>'
-      : (vis ? '' : '<div class="mapread sstnote">'+trFn('sstHint')+'</div>'));
+        +'<div class="mapread sstnote sstlong">'+ trFn(isSst ? 'sstNoteSst' : 'sstNoteAnom') +'</div>'
+      : '<div class="mapread sstnote sstlong">'+(vis ? '' : trFn('sstHint'))+'</div>');
 }
 
 // The card's map is a PREVIEW: drawn with live tints, but it registers no
@@ -1383,11 +1403,22 @@ function getVariable(){ return variable; }
 // Off / anom / sst as ONE choice. The row used to carry a layer toggle named
 // "SST anomaly" plus a variable button also named "Anomaly" -- the same words
 // twice, for two different jobs.
+// One tap must always do the obvious thing, from any state.
+//
+// The old version had a hole: if `variable` was already the one you tapped it
+// just called setVisible(true) and never asked for frames. That is precisely
+// the state you land in after tapping once while the first fetch is still in
+// flight -- so the second tap, and every tap after it, did nothing at all.
+// Refilling is now driven by whether the store is EMPTY, not by whether the
+// variable happened to change.
 function show(v){
   if (v === 'off'){ setVisible(false); return; }
   var want = (v === 'sst') ? 'sst' : 'anom';
-  if (want !== variable) setVariable(want);   // clears the store and refetches
-  else setVisible(true);
+  if (want !== variable){ setVariable(want); return; }   // clears + refetches
+  if (visible && order.length){ setVisible(false); return; } // tap the active one to hide
+  visible = true;
+  onChange();
+  if (!order.length) needFrames(want);
 }
 
 return { addFrame:addFrame, paint:paint, play:play, stop:stop, toggle:toggle,
@@ -1726,10 +1757,9 @@ var T = {
   swReload:   {zh:'立即更新', en:'Update now'},
   swUpdating: {zh:'更新中\u2026', en:'Updating\u2026'},
   swBuild:    {zh:'版本', en:'Build'},
-  sstField:   {zh:'🌡 海温场', en:'🌡 SST field'},
-  sstOff:     {zh:'关闭', en:'Off'},
-  sstHint:    {zh:'叠加 NOAA OISST 海面温度距平场，可播放近 12 周变化',
-               en:'Overlay the NOAA OISST sea-surface temperature anomaly field; play the last 12 weeks'},
+
+  sstHint:    {zh:'点上面任一个可叠加 NOAA OISST 海温场并播放近 12 周变化；再点同一个即可关闭。',
+               en:'Tap either button above to overlay the NOAA OISST field and play the last 12 weeks; tap the same one again to switch it off.'},
   sstLoading: {zh:'正在载入海温场…', en:'Loading the SST field…'},
   sstAged:    {zh:'⚠️ 最新一帧为 {d}（{n} 天前）。图仍可看，但每一帧都请以它自己的日期为准。',
                en:'⚠️ Newest frame is {d} ({n} days old). Still usable, but read each frame by its own date.'},
