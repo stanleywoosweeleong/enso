@@ -35,9 +35,11 @@ jobs:
           # Override in repo Settings → Secrets and variables → Variables if the
           # Worker ever moves.
           ENSO_PROXY: ${{ vars.ENSO_PROXY || 'https://enso-proxy.standphoto.workers.dev' }}
-          # Where the committed data files are served from. Override with a
-          # repo variable if Pages moves.
-          ENSO_SITE: ${{ vars.ENSO_SITE || 'https://stanleywoosweeleong.github.io/Newemso' }}
+          # Derived from the repo this workflow is IN, not hardcoded. A guessed
+          # Pages URL produced a run where every committed file 404'd while the
+          # data sat correctly in the repo two directories away. Override with
+          # an ENSO_SITE repo variable only if Pages serves a custom domain.
+          ENSO_SITE: ${{ vars.ENSO_SITE || format('https://{0}.github.io/{1}', github.repository_owner, github.event.repository.name) }}
         run: node tools/feed-health.mjs
 
       # Only fires when the step above exited non-zero. Reuses one issue per
