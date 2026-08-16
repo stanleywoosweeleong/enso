@@ -27,7 +27,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'  # global fetch, no dependencies to install
+          node-version: '22'  # global fetch, no dependencies to install
 
       - name: Check every upstream
         id: check
