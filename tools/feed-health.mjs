@@ -107,7 +107,12 @@ export function buildChecks(proxy, site){
     { name: 'weekly Niño (CPC)', url: P('weekly'), budget: 12,
       check: t => parseWeekly(t) },
 
-    { name: 'dmimon (PSL monthly DMI)', url: P('dmimon'), budget: 110,
+    // soft: this is a FALLBACK source only — the app's primary IOD is the
+    // computed DMI (green above). PSL's monthly file habitually lags 2-3
+    // months and slipped past its budget after the Jul 2026 funding lapse.
+    // A stale fallback is worth seeing on the board, not worth a failure
+    // email at 04:10. Retire the feed if PSL stops publishing entirely.
+    { name: 'dmimon (PSL monthly DMI)', url: P('dmimon'), budget: 110, soft: true,
       check: t => parseDmiMonthly(t) },
 
     // BOTH variables. Only anom was checked, so sst could sit with an empty
