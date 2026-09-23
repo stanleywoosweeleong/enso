@@ -123,8 +123,11 @@ export function buildChecks(proxy, site){
         if (!ix.dates || !ix.dates.length)
           throw new Error(`index has NO dates (newest ${ix.newest || '?'}) — the app cannot load this variable`);
         if (ix.dates.length < 6) throw new Error(`only ${ix.dates.length} frames in the index`);
-        return { ts: Date.parse(ix.newest + 'T12:00:00Z'),
-                 note: `${ix.newest}, ${ix.dates.length} frames, via ${ix.source}` };
+        // Age = newest frame actually STORED, not index.newest (which is only
+        // what upstream has available and can be current while frames are old).
+        const stored = ix.dates.slice().sort().pop();
+        return { ts: Date.parse(stored + 'T12:00:00Z'),
+                 note: `stored ${stored} (upstream ${ix.newest}), ${ix.dates.length} frames, via ${ix.source}` };
       } },
 
     { name: 'built: SST frames (anom)', url: S('data/sst/index-anom.json'), budget: 10,
@@ -135,8 +138,11 @@ export function buildChecks(proxy, site){
         if (!ix.dates || !ix.dates.length)
           throw new Error(`index has NO dates (newest ${ix.newest || '?'}) — the app cannot load this variable`);
         if (ix.dates.length < 6) throw new Error(`only ${ix.dates.length} frames in the index`);
-        return { ts: Date.parse(ix.newest + 'T12:00:00Z'),
-                 note: `${ix.newest}, ${ix.dates.length} frames, via ${ix.source}`,
+        // Age = newest frame actually STORED, not index.newest (which is only
+        // what upstream has available and can be current while frames are old).
+        const stored = ix.dates.slice().sort().pop();
+        return { ts: Date.parse(stored + 'T12:00:00Z'),
+                 note: `stored ${stored} (upstream ${ix.newest}), ${ix.dates.length} frames, via ${ix.source}`,
                  warn: /final/.test(ix.source || '')
                    ? `built from ${ix.source}, the ~2-week-old final product` : null };
       } },
