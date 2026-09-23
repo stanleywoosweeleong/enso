@@ -24,7 +24,7 @@
  * message) and shown in the footer, so a stale install is visible rather than
  * something you have to guess at.
  */
-const CACHE_VERSION = "enso-v1.22.3";
+const CACHE_VERSION = "enso-v1.23.0";
 const SHELL = [
   './',
   './index.html',
@@ -101,6 +101,24 @@ self.addEventListener('fetch', function(event){
           return hit || caches.match('./');
         });
       })
+    );
+    return;
+  }
+
+  // Changing data files (dmi.json, iod.json, the SST index files): network-first
+  // so Refresh really gets today's copy; cache is only the offline fallback.
+  // Dated SST frames (sst-YYYY-MM-DD.json) never change, so they stay cache-first.
+  var isData = url.indexOf('/data/') !== -1;
+  var isFrame = /\/data\/sst\/(sst|anom)-\d{4}-\d{2}-\d{2}\.json/.test(url);
+  if (isData && !isFrame) {
+    event.respondWith(
+      fetch(req).then(function(resp){
+        if (resp && resp.status === 200) {
+          var copy = resp.clone();
+          caches.open(CACHE_VERSION).then(function(c){ c.put(req, copy); });
+        }
+        return resp;
+      }).catch(function(){ return caches.match(req, { ignoreSearch: true }); })
     );
     return;
   }

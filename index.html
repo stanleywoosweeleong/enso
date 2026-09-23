@@ -1538,6 +1538,50 @@ var LANG_CYCLE = ['zh','en'];
 var LANG_LBL   = { zh:'中', en:'EN' };
 var LANG = localStorage.getItem('enso-lang') || 'zh';
 var HELP_STATE = null; // live values for the info-guide overlay, set in render()
+
+// ONE table of maximum ages. A fetch that SUCCEEDS but returns data older than
+// this is treated like a failure: shown greyed, never used for advice or shares.
+// Thresholds follow each source's publish cadence plus one missed cycle.
+var MAX_AGE_DAYS = {
+  roni:        100, // 3-month mean dated by its CENTRE month; ~60d back when healthy
+  weekly:       21, // CPC weekly (Mondays)
+  iodComputed:  14, // our daily-built DMI from OISST
+  iodWeekly:    35,
+  iodMonthly:   75, // PSL monthly runs 2-3 months behind
+  mjo:          10,
+  monsoon:       4
+};
+// Age in days. No usable date -> Infinity, so "cannot age-check" behaves like
+// "too old" and never slips through a gate.
+function ageDays(ts){
+  return (typeof ts === 'number' && ts > 0 && isFinite(ts))
+    ? (Date.now() - ts) / 86400000 : Infinity;
+}
+// RONI rows carry a season code + year; date them by the centre month (15th).
+function roniTs(row){
+  var m = row && SEAS_MONTHS[row.seas];
+  if (!m) return 0;
+  return Date.UTC(parseInt(row.yr,10), parseInt(m[1],10)-1, 15);
+}
+// Single IOD freshness rule shared by the card, the orchard line and the share.
+function iodTooOld(iod){
+  var max = iod.monthly ? MAX_AGE_DAYS.iodMonthly : MAX_AGE_DAYS.iodWeekly;
+  return ageDays(iod.asOf ? bomDateTs(iod.asOf) : 0) > max;
+}
+// Resolve to `fallback` if a promise hasn't settled in ms, so one slow optional
+// feed can never hold the whole dashboard hostage.
+function withTimeout(p, ms, fallback){
+  return new Promise(function(res, rej){
+    var done = false;
+    var t = setTimeout(function(){
+      if (done) return; done = true;
+      if (fallback === undefined) rej(new Error('timeout ' + ms + 'ms')); else res(fallback);
+    }, ms);
+    p.then(function(v){ if (!done){ done = true; clearTimeout(t); res(v); } },
+           function(e){ if (!done){ done = true; clearTimeout(t); fallback === undefined ? rej(e) : res(fallback); } });
+  });
+}
+var LAST_LOAD = 0;
 var T = {
   title:      {zh:'厄尔尼诺/拉尼娜监测', en:'ENSO Monitor'},
   sub:        {zh:'RONI 指数 · 厄尔尼诺与拉尼娜', en:'RONI index · El Niño & La Niña'},
@@ -1681,9 +1725,13 @@ var T = {
                en:'⚠️ IOD value is dated {m} and may be out of date — needs a check. Farm advice withheld until refreshed.'},
   helpIod:    {zh:'🌏 印度洋偶极 (IOD)：看印度洋东西两侧的海温差。负 IOD = 东侧（靠苏门答腊、离我们近）偏暖 → 本区偏湿、早上多雨；正 IOD = 东侧偏冷 → 本区偏干。门槛：≥ +0.4 为正，≤ −0.4 为负，中间为中性。IOD 常与厄尔尼诺／拉尼娜同向出现：负 IOD + 拉尼娜最湿，正 IOD + 厄尔尼诺最干。但两者并非绑定——IOD 也可能在 ENSO 中性时单独出现，所以值得单独追踪。数值取 NOAA OISST 海温距平自行计算（标准 DMI 定义），每周更新。',
                en:'🌏 Indian Ocean Dipole (IOD): the east–west sea-temperature gradient across the Indian Ocean. Negative IOD = the eastern side (near Sumatra, close to us) is warmer → wetter here, often morning rain; positive IOD = cooler eastern side → drier here. Thresholds: ≥ +0.4 positive, ≤ −0.4 negative, in between neutral. IOD often lines up with El Niño/La Niña: negative IOD + La Niña is wettest, positive IOD + El Niño is driest. But they are not locked together — IOD can also occur on its own while ENSO is neutral, which is why it is worth tracking separately. The value is computed here from NOAA OISST anomalies using the standard DMI definition, updated weekly.'},
-  helpIodNote:{zh:'ℹ️ 关于「IOD 暂时无法取得」：本 App 不再抓取任何网页。IOD 由每日任务取 NOAA OISST 海温格点自行计算，结果存入本仓库。如果哪天看到红色提示「暂时无法取得」，多数情况只是 BOM 改了网页措辞，抓取对不上了——这是程序「宁可不显示，也不给过期或乱猜的数字」的安全设计，不是系统坏了，也不是数据出错。厄尔尼诺部分完全不受影响，照常运作。看到这个提示时不用紧张，只需把那句话的新写法告诉开发者，改一行抓取规则即可。预计每隔几个月可能需要微调一次。',
-               en:'ℹ️ About the "IOD temporarily unavailable" notice: unlike the NOAA El Niño data, the IOD is computed here from the NOAA OISST grid by a daily job and committed to this repo, rather than scraped from BOM\'s web page. If you ever see the red "temporarily unavailable" notice, it almost always just means BOM reworded their page so the scrape no longer matches. This is the app\'s safety design deliberately choosing to show nothing rather than a stale or guessed number — it is not a breakage and not bad data. The El Niño side is completely unaffected and keeps working. No need to worry when you see it: just send the developer BOM\'s new wording and it\'s a one-line fix. Expect this maybe once every few months.'},
+  helpIodNote:{zh:'ℹ️ 关于「IOD 暂时无法取得」：本软件不再抓取任何网页。IOD 由每日任务取 NOAA OISST 海温格点自行计算，结果存入本仓库；若没有，就改用 NOAA PSL 的月度 DMI。看到红色提示，代表这两个来源都没有新鲜数据（多半是每日任务没有跑成）。这是「宁可不显示，也不给过期或乱猜的数字」的安全设计。厄尔尼诺部分不受影响。请开发者查看 GitHub Actions 的 build-data 任务。',
+               en:'ℹ️ About the "IOD temporarily unavailable" notice: nothing is scraped from web pages any more. The IOD is computed from the NOAA OISST grid by a daily job and committed to this repo, with NOAA PSL\'s monthly DMI as a fallback. The red notice means neither source has fresh data — usually the daily job did not run. That is the safety design choosing to show nothing rather than a stale or guessed number. The El Niño side is unaffected. The developer should check the build-data job in GitHub Actions.'},
   farmTitle:  {zh:'对果园的意义', en:'What it means for the orchard'},
+  verdictStale:{zh:'数据过期 — 暂不提供建议，请点「刷新数据」', en:'Data out of date — no advice until it refreshes'},
+  roniStaleNote:{zh:'官方 RONI 最新一季（{s}）已超过正常更新周期，数值仅供参考，不作建议。', en:'The latest official RONI season ({s}) is older than its normal update cycle. Shown for reference only; no advice is given from it.'},
+  ensoStaleNote:{zh:'ENSO 数据已过期，暂不提供果园建议。', en:'ENSO data is out of date, so no orchard advice is given right now.'},
+  ensoStaleShort:{zh:'数据过期（暂不提供）', en:'data out of date (withheld)'},
   iodCredit:  {zh:'🙏 本 IOD 功能源自农友 Wei Jian 的提问——他注意到负 IOD 时本地早上常下雨、影响农活。谢谢他的宝贵反馈，让这个工具对大家更有用。',
                en:'🙏 This IOD feature came from a question by fellow grower Wei Jian, who noticed that negative IOD often brings morning rain here and affects fieldwork. Thank you for the valuable feedback that made this tool better for everyone.'},
   srcTitle:   {zh:'数据来源', en:'Data sources'},
@@ -1845,8 +1893,8 @@ var T = {
   iodNowNeg:  {zh:'负 IOD — 本区趋湿、早上多雨。', en:'Negative IOD — wetter tilt, more morning rain.'},
   iodNowNeu:  {zh:'IOD 中性 — 没有明显偏移。', en:'IOD-neutral — no strong tilt.'},
   iodOutlookLabel:{zh:'BOM 官方 IOD 页面', en:'BOM official IOD page'},
-  iodOutlookTxt:  {zh:'澳洲气象局 (BOM) 每周更新 IOD 指数，并发布模式展望（未来几个月正/负 IOD 的可能性）。本 App 的 IOD 数值即取自该页。',
-                   en:'The Bureau of Meteorology (BOM) updates the IOD index weekly and publishes a model outlook (the chance of a positive/negative IOD in coming months). This app\u2019s IOD value is read from that page.'},
+  iodOutlookTxt:  {zh:'澳洲气象局 (BOM) 每周更新 IOD 指数，并发布模式展望（未来几个月正/负 IOD 的可能性）。本软件不读取 BOM：IOD 由每日任务用 NOAA OISST 海温格点自行计算（方法与 BOM 指数相同，但不是 BOM 公布的数字），并以 NOAA PSL 月度 DMI 作为后备。',
+                   en:'The Bureau of Meteorology (BOM) updates the IOD index weekly and publishes a model outlook (the chance of a positive/negative IOD in coming months). This app does not read BOM: its IOD is computed daily from the NOAA OISST sea-temperature grid (the same method as BOM\u2019s index, but not BOM\u2019s published number), with NOAA PSL\u2019s monthly DMI as a fallback.'},
   iodOutlookCheck:{zh:'查看 BOM 最新 IOD ↗', en:'Check BOM\u2019s latest IOD ↗'},
   errTitle:   {zh:'无法载入数据', en:'Could not load data'},
   errBody:    {zh:'请检查网络或 Worker 设置。NOAA 数据需经 Cloudflare Worker 代理。',
@@ -2142,8 +2190,13 @@ function seasonPlain(code){
 // the monthly because it is WEEKLY and current -- PSL runs two to three months
 // behind -- but it is labelled, because it is not the number BoM publishes.
 function withComputedDmi(iod, dmi){
-  if (iod && iod.ok === true && !iod.monthly) return iod;      // BoM figure wins
-  if (!dmi || dmi.ok !== true || typeof dmi.value !== 'number') return iod;
+  if (iod && iod.ok === true && !iod.monthly && !iodTooOld(iod)) return iod; // fresh BoM wins
+  if (!dmi || dmi.ok !== true || typeof dmi.value !== 'number' || !dmi.date) return iod;
+  // The computed value only outranks the monthly one while it is itself fresh.
+  // An old computed number must never displace a current monthly figure.
+  var dmiAge = ageDays(Date.parse(dmi.date + 'T12:00:00Z'));
+  var iodUsable = iod && iod.ok === true && typeof iod.value === 'number' && !iodTooOld(iod);
+  if (dmiAge > MAX_AGE_DAYS.iodComputed && iodUsable) return iod;
   var MN = ['January','February','March','April','May','June','July',
             'August','September','October','November','December'];
   var d = new Date(dmi.date + 'T12:00:00Z');
@@ -2184,13 +2237,9 @@ function iodCard(iod){
   var phaseLbl = p==='pos' ? tr('iodPosCond') : p==='neg' ? tr('iodNegCond') : tr('iodNeuCond');
   var badgeCls = p==='pos' ? 'phase-warm' : p==='neg' ? 'phase-cool' : 'phase-neutral';
   var col = p==='pos' ? 'var(--warm)' : p==='neg' ? 'var(--cool)' : 'var(--ink)';
-  var asOfTs = iod.asOf ? bomDateTs(iod.asOf) : 0;
-  // A monthly index is EXPECTED to sit a month or two back -- PSL runs about
-  // two to three months behind. Judging it by the weekly 35-day rule would
-  // permanently mislabel a perfectly normal monthly value as stale, so the
-  // yardstick follows the source.
-  var maxAge = iod.monthly ? 75 : 35;
-  var tooOld = asOfTs > 0 && (Date.now() - asOfTs) > maxAge*24*3600*1000;
+  // Monthly and weekly sources are judged on their own yardsticks, and a value
+  // with no parseable date counts as too old (see iodTooOld / ageDays).
+  var tooOld = iodTooOld(iod);
   var asOfTxt = iod.asOf ? iod.asOf : '';
 
   var html = '<div class="card">'
@@ -2218,9 +2267,7 @@ function iodCard(iod){
 // IOD is unavailable/stale (so we never give advice off bad data).
 function iodFarmLine(iod){
   if (!iod || !iod.ok || typeof iod.value !== 'number') return '';
-  var asOfTs = iod.asOf ? bomDateTs(iod.asOf) : 0;
-  var maxAge = iod.monthly ? 75 : 35;   // see iodCard: monthly runs further back
-  if (asOfTs > 0 && (Date.now() - asOfTs) > maxAge*24*3600*1000) return ''; // stale
+  if (iodTooOld(iod)) return ''; // stale or undated -> no advice
   var p = iodPhaseOf(iod.value);
   return p==='pos' ? tr('iodFarmPos') : p==='neg' ? tr('iodFarmNeg') : tr('iodFarmNeu');
 }
@@ -2676,13 +2723,16 @@ function fetchMonsoon(){
         return cnt ? sum/cnt : null;
       });
       // surge = MSI < threshold for >= SURGE_DAYS consecutive days (latest run)
-      var run=0, surgeNow=false, latestMSI=null;
-      for (var i=0;i<msiByDay.length;i++){
-        if (msiByDay[i]==null){ run=0; continue; }
-        latestMSI = msiByDay[i];
-        if (msiByDay[i] < SURGE_THRESH){ run++; if (run>=SURGE_DAYS) surgeNow=true; }
-        else run=0;
+      // Only the run that ENDS on the latest valid day counts. The old loop
+      // latched surgeNow=true forever once any 3-day run occurred in the window.
+      var lastValid = -1;
+      for (var i=msiByDay.length-1;i>=0;i--){ if (msiByDay[i]!=null){ lastValid=i; break; } }
+      if (lastValid < 0) throw new Error('monsoon: no valid MSI day');
+      var latestMSI = msiByDay[lastValid], run = 0;
+      for (var j=lastValid;j>=0;j--){
+        if (msiByDay[j]!=null && msiByDay[j] < SURGE_THRESH) run++; else break;
       }
+      var surgeNow = run >= SURGE_DAYS;
       // status wind: daily-mean direction over the Malaysia point, latest day
       var mp = arr[MSI_LON.length].hourly;
       var lastDay = dayKeys[dayKeys.length-1];
@@ -2704,7 +2754,7 @@ function fetchMonsoon(){
       return {
         msi: latestMSI, surge: surgeNow, surgeRun: run,
         status: status, windDir: mDir, windSpeed: mSpeed,
-        date: lastDay, asOf: lastDay
+        date: dayKeys[lastValid], asOf: dayKeys[lastValid]   // the day the MSI is really from
       };
     });
 }
@@ -2734,20 +2784,23 @@ function load(){
   // from the same OISST analysis the SST layer uses. Weekly and current, where
   // the PSL monthly fallback runs two to three months behind.
   var dmiComputed = null;
-  var dmiFeedStatic = fetch('./data/dmi.json', { cache: 'no-cache' })
+  var dmiFeedStatic = withTimeout(fetch('./data/dmi.json', { cache: 'no-cache' })
     .then(function(r){ return r.ok ? r.json() : null; })
-    .then(function(o){ dmiComputed = o; }).catch(function(){});
+    .then(function(o){ dmiComputed = o; }).catch(function(){}), 12000, null);
   var iodFeed = Promise.resolve(null);   // BoM retired; slot kept so res[] indexes hold
-  var mjoFeed = getFeed('mjo').catch(function(){ return null; });
+  LAST_LOAD = Date.now();
+  var OPT_MS = 12000;   // optional feeds: give up and render without them
+  var mjoFeed = withTimeout(getFeed('mjo'), OPT_MS, null);
   // Monsoon status + surge index: computed from Open-Meteo 925-hPa winds,
   // fetched directly (not via the Worker). Also a bonus — null on failure.
-  var monFeed = fetchMonsoon().catch(function(){ return null; });
-  var outFeed = getFeed('outlook').catch(function(){ return null; });
+  var monFeed = withTimeout(fetchMonsoon(), OPT_MS, null);
+  var outFeed = withTimeout(getFeed('outlook'), OPT_MS, null);
   // Monthly DMI: only ever used if BoM has no weekly figure. Bonus feed, so a
   // failure resolves to null rather than taking the whole load down.
-  var dmiFeed = getFeed('dmimon').catch(function(){ return null; });
+  var dmiFeed = withTimeout(getFeed('dmimon'), OPT_MS, null);
   sstLoad();   // fire and forget: the map works fine without it
-  Promise.all([ getFeed('roni'), getFeed('weekly'), iodFeed, mjoFeed, monFeed, outFeed, dmiFeed,
+  // Core feeds: a stall rejects, which drops to the saved copy below.
+  Promise.all([ withTimeout(getFeed('roni'), 20000), withTimeout(getFeed('weekly'), 20000), iodFeed, mjoFeed, monFeed, outFeed, dmiFeed,
                 dmiFeedStatic ])
     .then(function(res){
       var roni = parseSeasonal(res[0], 2);   // RONI anom in col 2
@@ -2764,7 +2817,8 @@ function load(){
       try {
         localStorage.setItem('enso-cache', JSON.stringify({
           roni: res[0], weekly: res[1], iod: res[2] || '', mjo: res[3] || '',
-          mon: mon || null, out: res[5] || '', dmimon: res[6] || '', at: Date.now()
+          mon: mon || null, out: res[5] || '', dmimon: res[6] || '',
+          dmi: dmiComputed || null, at: Date.now()
         }));
       } catch(e){ /* storage full or blocked — ignore */ }
       render(roni, weekly, null, iod, mjo, mon, out);
@@ -2776,7 +2830,10 @@ function load(){
       if (raw && raw.roni && raw.weekly) {
         var roni = parseSeasonal(raw.roni, 2);
         var weekly = parseWeekly(raw.weekly);
-        var iod = withMonthlyIod(parseIod(raw.iod), raw.dmimon);
+        // Same selection as online, from the saved inputs, so offline shows the
+        // same IOD (the computed DMI used to be dropped here).
+        var iod = withComputedDmi(withMonthlyIod({ ok:false, reason:'bom retired' }, raw.dmimon),
+                                  dmiComputed || raw.dmi || null);
         var mjo = parseMJO(raw.mjo);
         var out = parseOutlook(raw.out);
         if (roni.length && weekly.length) { render(roni, weekly, raw.at, iod, mjo, raw.mon||null, out); return; }
@@ -2846,10 +2903,8 @@ function parseOutlook(text){
   try {
     var o = (typeof text === 'string') ? JSON.parse(text) : text;
     if (!o || o.ok !== true || !o.status) return null;
-    if (o.issued){
-      var ts = bomDateTs(o.issued); // same "9 July 2026" format
-      if (ts > 0 && (Date.now() - ts) > 45*24*3600*1000) return null; // stale
-    }
+    // Undated = cannot age-check = not shown (ageDays -> Infinity).
+    if (ageDays(o.issued ? bomDateTs(o.issued) : 0) > 45) return null;
     return { status:o.status, synopsis:o.synopsis || null,
              synopsisZh:o.synopsisZh || null, issued:o.issued || null };
   } catch(e){ return null; }
@@ -2914,11 +2969,13 @@ function render(roni, weekly, cachedAt, iod, mjo, mon, out){
   // Staleness guard: how many weeks behind today is the latest weekly row?
   // CPC updates weekly (Mondays); >3 weeks behind signals a stalled feed or
   // an outdated deployed file. weekTs() gives a ms timestamp from the date.
-  var wkAgeWeeks = 0, wkStale = false;
-  if (wkLatest.ts){
-    wkAgeWeeks = Math.floor((Date.now() - wkLatest.ts) / (7*24*3600*1000));
-    wkStale = wkAgeWeeks >= 3;
-  }
+  // An undated row now counts as stale (ageDays -> Infinity).
+  var wkAge = ageDays(wkLatest.ts);
+  var wkStale = wkAge > MAX_AGE_DAYS.weekly;
+  var wkAgeWeeks = isFinite(wkAge) ? Math.floor(wkAge / 7) : '?';
+  // RONI had no age check at all; a frozen file kept driving the headline.
+  var roniAge = ageDays(roniTs(latest));
+  var roniStale = roniAge > MAX_AGE_DAYS.roni;
   // Diagnostic: what did the parser actually receive? Shown only when stale,
   // so we can tell a bad feed (few/old rows) from an app bug.
   var wkDebug = weekly.length + ' rows · ' + weekly[0].date + ' → ' + wkLatest.date;
@@ -2965,7 +3022,7 @@ function render(roni, weekly, cachedAt, iod, mjo, mon, out){
   // mean and the weekly value does not, so the gap between them is a units
   // difference, not a measure of lag. Both trends must agree, or we say nothing.
   var momentum = null;
-  if (!wkStale && strength){
+  if (!wkStale && !roniStale && strength){
     var bothUp   = (t3 === 'rising'  && wkDelta >  0.05);
     var bothDown = (t3 === 'falling' && wkDelta < -0.05);
     if (phase === 'warm') momentum = bothUp ? 'strengthening' : bothDown ? 'weakening' : null;
@@ -2979,16 +3036,23 @@ function render(roni, weekly, cachedAt, iod, mjo, mon, out){
   var strengthTxt = strength ? tr(strength)+' · '+phaseLabel : tr('neutral');
   if (momentum) strengthTxt += (LANG==='zh' ? '（'+tr(momentum)+'）' : ' · '+tr(momentum));
   var farmKey = phase==='warm'?'farmWarm':phase==='cool'?'farmCool':'farmNeutral';
+  var ensoAdviceOk = !roniStale;   // no ENSO farm advice off a frozen index
 
   // Live, data-driven "right now" sentence (observed state only).
-  var nowTxt = situationText(phase, strength, t3, latest.anom, wkLatest.nino34);
+  var wkForText = wkStale ? latest.anom : wkLatest.nino34; // stale week can't signal a transition
+  var nowTxt = roniStale ? tr('ensoStaleNote') : situationText(phase, strength, t3, latest.anom, wkForText);
   // Stash the inputs so the info-guide overlay can regenerate this live text
   // (and in the current language) whenever it is opened.
   HELP_STATE = { phase:phase, strength:strength, t3:t3,
-                 roni:latest.anom, wk:wkLatest.nino34, iod:iod, mjo:mjo, mon:mon, out:out };
+                 roni:latest.anom, wk:wkLatest.nino34, iod:iod, mjo:mjo, mon:mon, out:out,
+                 roniStale:roniStale, wkStale:wkStale,
+                 roniLbl: latest.seas+' '+latest.yr, wkDate: wkLatest.date };
   // Always-visible plain verdict for the hero (the 2-second takeaway).
-  var verdict = plainVerdict(phase, phaseOf(wkLatest.nino34));
-  HELP_STATE.verdictText = verdict.text; // reused by the WhatsApp share
+  // Only fresh inputs may drive it: stale RONI -> no verdict; stale weekly -> no tip.
+  var verdict = roniStale
+    ? { icon:'⏳', cls:'verdict-neutral', text: tr('verdictStale') }
+    : plainVerdict(phase, wkStale ? phase : phaseOf(wkLatest.nino34));
+  HELP_STATE.verdictText = roniStale ? '' : verdict.text; // share omits a stale verdict
 
   // spark: last 24 seasons
   var hist = roni.slice(-24);
@@ -3018,6 +3082,8 @@ function render(roni, weekly, cachedAt, iod, mjo, mon, out){
     +'<div class="anomunit">'+tr('anomUnit')+'</div>'
     +(strength?'<div class="strength" style="color:'+(phase==='warm'?'var(--warm)':'var(--cool)')+'">'+strengthTxt+'</div>':'')
     +'<div class="phase-desc">RONI · '+latest.seas+' '+latest.yr+' <span class="seas-plain">('+seasonPlain(latest.seas)+')</span></div>'
+    +(roniStale ? '<div class="stalebanner"><b>'+tr('staleWarn')+'</b><br>'+tr('roniStaleNote')
+        .replace('{s}', latest.seas+' '+latest.yr)+'</div>' : '')
     +'<div class="herolag">'+tr('heroLag').replace('{s}', latest.seas+' '+latest.yr+' ('+seasonPlain(latest.seas)+')')+'</div>'
     +(out && out.status
         ? '<div class="heroadv">'+tr('heroAdvisory')+'<b>'+outlookStatusLabel(out.status)+'</b>'
@@ -3093,7 +3159,7 @@ function render(roni, weekly, cachedAt, iod, mjo, mon, out){
 
   +'<div class="card farm">'
     +'<div class="cardtitle"><span class="dot"></span>'+tr('farmTitle')+'</div>'
-    +'<p><b>ENSO:</b> '+tr(farmKey)+'</p>'
+    +'<p><b>ENSO:</b> '+(ensoAdviceOk ? tr(farmKey) : tr('ensoStaleNote'))+'</p>'
     +(iodFarmLine(iod)
         ? '<p style="margin-top:9px"><b>IOD:</b> '+iodFarmLine(iod)+'</p>'
         : '')
@@ -3151,15 +3217,16 @@ function buildShareText(){
   L.push((zh?'🌊 气候信号快报':'🌊 Climate signals snapshot')+' · '+dateTxt);
   // ENSO
   var phLbl = s.phase==='warm'?tr('elnino'):s.phase==='cool'?tr('lanina'):tr('neutral');
-  L.push('ENSO: '+phLbl+' (RONI '+fmt(s.roni)+')');
-  if (typeof s.wk==='number') L.push((zh?'每周 Niño3.4: ':'Weekly Niño3.4: ')+fmt(s.wk));
+  if (s.roniStale) L.push('ENSO: '+tr('ensoStaleShort'));
+  else L.push('ENSO: '+phLbl+' (RONI '+s.roniLbl+' · '+fmt(s.roni)+')');
+  if (!s.wkStale && typeof s.wk==='number')
+    L.push((zh?'每周 Niño3.4: ':'Weekly Niño3.4: ')+fmt(s.wk)+' ('+s.wkDate+')');
   // IOD (only when good + fresh, same rule as the card)
   if (s.iod && s.iod.ok && typeof s.iod.value==='number'){
     var ip = iodPhaseOf(s.iod.value);
     var ipLbl = ip==='pos'?tr('iodPosCond'):ip==='neg'?tr('iodNegCond'):tr('iodNeuCond');
-    var asOfTs = s.iod.asOf ? bomDateTs(s.iod.asOf) : 0;
-    if (!(asOfTs>0 && (Date.now()-asOfTs)>35*24*3600*1000)){
-      L.push('IOD: '+ipLbl+' ('+fmt(s.iod.value)+')');
+    if (!iodTooOld(s.iod)){
+      L.push('IOD: '+ipLbl+' ('+fmt(s.iod.value)+(s.iod.asOf?' · '+s.iod.asOf:'')+')');
     }
   }
   // MJO (skip if stale, mirror the card's guard)
@@ -3176,7 +3243,7 @@ function buildShareText(){
     }
   }
   // Monsoon
-  if (s.mon){
+  if (s.mon && ageDays(s.mon.date ? Date.parse(s.mon.date+'T00:00:00Z') : 0) <= MAX_AGE_DAYS.monsoon){
     var stLbl = s.mon.status==='NE'?tr('monNE'):s.mon.status==='SW'?tr('monSW'):tr('monInter');
     var surgeTxt = (s.mon.status==='NE' && s.mon.surge) ? ' — '+tr('monSurgeShort') : '';
     L.push((zh?'季风: ':'Monsoon: ')+stLbl+surgeTxt);
@@ -3545,7 +3612,11 @@ if ('serviceWorker' in navigator) {
         swCheck();
         setInterval(swCheck, 15*60*1000);
         document.addEventListener('visibilitychange', function(){
-          if (!document.hidden) swCheck();
+          if (!document.hidden){
+            swCheck();
+            // Also refresh the readings if the app sat open/backgrounded for an hour.
+            if (LAST_LOAD && Date.now() - LAST_LOAD > 60*60*1000) load();
+          }
         });
         window.addEventListener('online', swCheck);
         swReportVersion(reg);
@@ -3641,10 +3712,12 @@ setTimeout(function(){var b=document.getElementById('boot');if(b)b.style.display
  ENDPOINTS THE APP ACTUALLY CALLS (append ?feed=<name>):
    ?feed=roni     -> RONI.ascii.txt  (official relative ONI, monthly/seasonal)
    ?feed=weekly   -> wksst9120.for   (weekly Nino-region SST anomalies)
-   ?feed=iod      -> JSON {ok,value,asOf}                  (BOM page scrape)
    ?feed=mjo      -> NOAA PSL ROMI daily text
    ?feed=outlook  -> JSON {ok,status,synopsis,synopsisZh,issued}  (CPC discussion scrape)
-   ?feed=oni      -> oni.ascii.txt   (available, not currently fetched by the app)
+   ?feed=dmimon   -> PSL monthly DMI text (IOD fallback)
+   ?feed=sst      -> JSON map frame (fallback when data/sst/*.json is missing)
+   Not called: ?feed=oni (available), ?feed=iod (retired; BoM 403s the Worker).
+   The IOD the app shows comes from data/dmi.json, built daily by build-data.
 
  ⚠️ NO CODE COPY LIVES HERE ANY MORE.
  It used to hold a 3-feed version (roni/oni/weekly) that had fallen ~3 feeds
@@ -3657,12 +3730,13 @@ setTimeout(function(){var b=document.getElementById('boot');if(b)b.style.display
  round: if you edit in the dashboard, export it back into enso-proxy.js in the
  same sitting, or the two will diverge again.
 
- QUICK HEALTH CHECK after any deploy — all five must answer:
+ QUICK HEALTH CHECK after any deploy — each must answer:
    <worker-url>/?feed=weekly   -> NOAA text, newest week near today
    <worker-url>/?feed=roni     -> NOAA text
    <worker-url>/?feed=mjo      -> PSL ROMI text
-   <worker-url>/?feed=iod      -> {"ok":true,"value":...,"asOf":"..."}
-   <worker-url>/?feed=outlook  -> {"ok":true,"status":"...","issued":"..."}
+   <worker-url>/?feed=dmimon   -> PSL text (header X-ENSO-Source names the source)
+   <worker-url>/?feed=outlook&fresh=1 -> {"ok":true,"status":"...","issued":"<date>"}
+      issued must be a real date; null now means the page layout changed.
  Response header X-ENSO-Cache tells you whether a scraped feed came from the
  edge cache (hit) or was freshly scraped (miss).
 
