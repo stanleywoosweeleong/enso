@@ -73,6 +73,7 @@
     line-height:1.35;border-top:1px solid;
     border-bottom-left-radius:14px;border-bottom-right-radius:14px}
   .verdict-i{font-size:17px;flex-shrink:0}
+  .verdict-sub{display:block;font-weight:500;font-size:13.5px;margin-top:4px;line-height:1.5}
   .herolag{font-size:11.5px;line-height:1.6;color:var(--muted);margin:8px 14px 0;
     padding-top:8px;border-top:1px dashed var(--line)}
   .heroadv{font-size:12.5px;line-height:1.6;color:#92400e;margin:7px 14px 0}
@@ -1736,6 +1737,20 @@ var T = {
   helpIodNote:{zh:'ℹ️ 关于「IOD 暂时无法取得」：本软件不再抓取任何网页。IOD 由每日任务取 NOAA OISST 海温格点自行计算，结果存入本仓库；若没有，就改用 NOAA PSL 的月度 DMI。看到红色提示，代表这两个来源都没有新鲜数据（多半是每日任务没有跑成）。这是「宁可不显示，也不给过期或乱猜的数字」的安全设计。厄尔尼诺部分不受影响。请开发者查看 GitHub Actions 的 build-data 任务。',
                en:'ℹ️ About the "IOD temporarily unavailable" notice: nothing is scraped from web pages any more. The IOD is computed from the NOAA OISST grid by a daily job and committed to this repo, with NOAA PSL\'s monthly DMI as a fallback. The red notice means neither source has fresh data — usually the daily job did not run. That is the safety design choosing to show nothing rather than a stale or guessed number. The El Niño side is unaffected. The developer should check the build-data job in GitHub Actions.'},
   farmTitle:  {zh:'对果园的意义', en:'What it means for the orchard'},
+  stWhyMjo:   {zh:'MJO 正经过本区（第 {p} 位相，振幅 {a}）', en:'The MJO is over our region (phase {p}, amplitude {a})'},
+  stWhyMjoNear:{zh:'MJO 正从印度洋移近本区（第 {p} 位相，振幅 {a}）', en:'The MJO is moving in from the Indian Ocean (phase {p}, amplitude {a})'},
+  stWhyMjoFar:{zh:'MJO 走到对侧，本区雨水受抑制（第 {p} 位相，振幅 {a}）', en:'The MJO is on the far side, suppressing our rain (phase {p}, amplitude {a})'},
+  stWhySurge: {zh:'季风涌正在发生', en:'A monsoon surge is under way'},
+  vWetNow:    {zh:'未来 1–2 周偏湿 — 不必灌溉，注意排水与园区通路', en:'Wetter for the next 1–2 weeks — no irrigation needed; see to drainage and farm roads'},
+  vWetNowDryLater:{zh:'未来 1–2 周偏湿 — 不必灌溉，注意排水与园区通路', en:'Wetter for the next 1–2 weeks — no irrigation needed; see to drainage and farm roads'},
+  vWetNowDryLaterSub:{zh:'厄尔尼诺的偏干要等这波雨水过后才显现，那时再准备灌溉、留意火患与花期。', en:'El Niño\u2019s dry lean returns after this wet spell passes — prepare irrigation, fire watch and flowering then.'},
+  vWetBothSub:{zh:'拉尼娜本已偏湿，这 1–2 周雨水会更集中。', en:'La Niña already leans wet; the next 1–2 weeks will be wetter still.'},
+  vDryNow:    {zh:'未来 1–2 周偏干 — 利于喷药与采收，留意灌溉', en:'Drier for the next 1–2 weeks — good for spraying and harvest; keep an eye on irrigation'},
+  vDryNowWetLater:{zh:'未来 1–2 周偏干 — 趁机喷药与采收', en:'Drier for the next 1–2 weeks — use it for spraying and harvest'},
+  vDryNowWetLaterSub:{zh:'拉尼娜的偏湿会在这段干期过后回来，提前备好排水。', en:'La Niña\u2019s wet lean returns after this dry spell — get drainage ready.'},
+  vDryBothSub:{zh:'厄尔尼诺本已偏干，这 1–2 周会更干，灌溉优先。', en:'El Niño already leans dry; the next 1–2 weeks will be drier still — irrigation first.'},
+  farmWarmButWetNow:{zh:'（这是未来数月的背景。眼下 MJO／季风带来雨水，暂不需灌溉。）', en:'(That is the months-ahead background. Right now the MJO / monsoon is bringing rain, so irrigation can wait.)'},
+  farmCoolButDryNow:{zh:'（这是未来数月的背景。眼下 1–2 周偏干，适合喷药与采收。）', en:'(That is the months-ahead background. The next 1–2 weeks are drier — good for spraying and harvest.)'},
   verdictStale:{zh:'数据过期 — 暂不提供建议，请点「刷新数据」', en:'Data out of date — no advice until it refreshes'},
   roniStaleNote:{zh:'官方 RONI 最新一季（{s}）已超过正常更新周期，数值仅供参考，不作建议。', en:'The latest official RONI season ({s}) is older than its normal update cycle. Shown for reference only; no advice is given from it.'},
   ensoStaleNote:{zh:'ENSO 数据已过期，暂不提供果园建议。', en:'ENSO data is out of date, so no orchard advice is given right now.'},
@@ -2173,22 +2188,67 @@ function situationText(phase, strength, t3, roniVal, wkVal){
 // Uses the OBSERVED phase, and lets the weekly pulse tip a neutral state
 // toward its leaning side (that's the real, actionable signal for a farmer).
 // Returns {icon, text} in the active language. No forecast — observed only.
-function plainVerdict(phase, wkPhase){
+// Short-term rain signal for the next ~1-2 weeks, from FRESH inputs only:
+// an active MJO in a wet or dry phase for us, and/or a monsoon surge now.
+// A surge is rain actually arriving, so it wins over an MJO "dry" phase.
+function shortTermLean(mjo, mon){
+  var lean = null, parts = [];
+  if (mjo && mjo.amp >= MJO_ACTIVE
+      && ageDays(Date.UTC(mjo.year, mjo.month-1, mjo.day)) <= MAX_AGE_DAYS.mjo){
+    var e = mjoEffect(mjo.phase);
+    if (e === 'wet' || e === 'dry'){
+      lean = e;
+      var wk = e === 'dry' ? 'stWhyMjoFar' : mjo.phase === 3 ? 'stWhyMjoNear' : 'stWhyMjo';
+      parts.push(tr(wk).replace('{p}', mjo.phase).replace('{a}', mjo.amp.toFixed(2)));
+    }
+  }
+  if (mon && mon.surge && mon.date
+      && ageDays(Date.parse(mon.date + 'T00:00:00Z')) <= MAX_AGE_DAYS.monsoon){
+    if (lean === 'dry') parts = [];
+    lean = 'wet';
+    parts.push(tr('stWhySurge'));
+  }
+  return lean ? { lean: lean, why: parts.join(LANG==='zh' ? '，' : '; ') } : null;
+}
+
+// The hero verdict. The seasonal lean (ENSO, months ahead) and the short-term
+// lean (MJO / surge, next 1-2 weeks) can point opposite ways -- El Nino
+// "drier" while an active MJO is flooding the farm roads. When they disagree,
+// what to DO this week follows the short-term signal, and the seasonal lean is
+// kept as "later" context, so the advice never contradicts the other cards.
+function plainVerdict(phase, wkPhase, st){
+  var v = seasonalVerdict(phase, wkPhase);
+  if (!st) return v;
+  var lean = v.lean;
+  if (st.lean === 'wet'){
+    if (lean === 'warm') return { icon:'🌧️', cls:'verdict-cool', text: tr('vWetNowDryLater'),
+      sub: st.why + (LANG==='zh' ? '。' : '. ') + tr('vWetNowDryLaterSub') };
+    if (lean === 'cool') { v.sub = st.why + (LANG==='zh' ? '。' : '. ') + tr('vWetBothSub'); return v; }
+    return { icon:'🌧️', cls:'verdict-cool', text: tr('vWetNow'), sub: st.why };
+  }
+  // st.lean === 'dry'
+  if (lean === 'cool') return { icon:'🌤️', cls:'verdict-neutral', text: tr('vDryNowWetLater'),
+    sub: st.why + (LANG==='zh' ? '。' : '. ') + tr('vDryNowWetLaterSub') };
+  if (lean === 'warm') { v.sub = st.why + (LANG==='zh' ? '。' : '. ') + tr('vDryBothSub'); return v; }
+  return { icon:'🌤️', cls:'verdict-neutral', text: tr('vDryNow'), sub: st.why };
+}
+
+function seasonalVerdict(phase, wkPhase){
   var lean = phase;
   if (phase === 'neutral' && wkPhase !== 'neutral') lean = wkPhase; // transition tip
   if (lean === 'warm'){
-    return { icon:'☀️', cls:'verdict-warm',
+    return { lean:'warm', icon:'☀️', cls:'verdict-warm',
       text: (LANG==='zh')
         ? '偏干 — 准备灌溉、留意火患与花期'
         : 'Leaning drier — prepare irrigation, watch fire risk & flowering' };
   }
   if (lean === 'cool'){
-    return { icon:'🌧️', cls:'verdict-cool',
+    return { lean:'cool', icon:'🌧️', cls:'verdict-cool',
       text: (LANG==='zh')
         ? '偏湿 — 注意排水与根部病害'
         : 'Leaning wetter — watch drainage & root disease' };
   }
-  return { icon:'⚖️', cls:'verdict-neutral',
+  return { lean:'neutral', icon:'⚖️', cls:'verdict-neutral',
     text: (LANG==='zh')
       ? '雨量接近常年 — 按常规管理'
       : 'Rainfall near normal — manage as usual' };
@@ -3084,8 +3144,10 @@ function render(roni, weekly, cachedAt, iod, mjo, mon, out){
   // Only fresh inputs may drive it: stale RONI -> no verdict; stale weekly -> no tip.
   var verdict = roniStale
     ? { icon:'⏳', cls:'verdict-neutral', text: tr('verdictStale') }
-    : plainVerdict(phase, wkStale ? phase : phaseOf(wkLatest.nino34));
+    : plainVerdict(phase, wkStale ? phase : phaseOf(wkLatest.nino34), shortTermLean(mjo, mon));
   HELP_STATE.verdictText = roniStale ? '' : verdict.text; // share omits a stale verdict
+  HELP_STATE.verdictSub  = roniStale ? '' : (verdict.sub || '');
+  var stNow = shortTermLean(mjo, mon);
 
   // spark: last 24 seasons
   var hist = roni.slice(-24);
@@ -3122,7 +3184,8 @@ function render(roni, weekly, cachedAt, iod, mjo, mon, out){
         ? '<div class="heroadv">'+tr('heroAdvisory')+'<b>'+outlookStatusLabel(out.status)+'</b>'
           +(out.issued?' <span class="outdate">('+out.issued+')</span>':'')+'</div>'
         : '')
-    +'<div class="verdict '+verdict.cls+'"><span class="verdict-i">'+verdict.icon+'</span>'+verdict.text+'</div>'
+    +'<div class="verdict '+verdict.cls+'"><span class="verdict-i">'+verdict.icon+'</span>'
+      +'<span>'+verdict.text+(verdict.sub ? '<span class="verdict-sub">'+verdict.sub+'</span>' : '')+'</span></div>'
   +'</div>'
 
   +'<div class="card">'
@@ -3192,7 +3255,10 @@ function render(roni, weekly, cachedAt, iod, mjo, mon, out){
 
   +'<div class="card farm">'
     +'<div class="cardtitle"><span class="dot"></span>'+tr('farmTitle')+'</div>'
-    +'<p><b>ENSO:</b> '+(ensoAdviceOk ? tr(farmKey) : tr('ensoStaleNote'))+'</p>'
+    +'<p><b>ENSO:</b> '+(ensoAdviceOk ? tr(farmKey) : tr('ensoStaleNote'))
+      +(ensoAdviceOk && stNow && ((stNow.lean==='wet' && phase==='warm') || (stNow.lean==='dry' && phase==='cool'))
+        ? ' <b>'+tr(stNow.lean==='wet' ? 'farmWarmButWetNow' : 'farmCoolButDryNow')+'</b>' : '')
+      +'</p>'
     +(iodFarmLine(iod)
         ? '<p style="margin-top:9px"><b>IOD:</b> '+iodFarmLine(iod)+'</p>'
         : '')
@@ -3260,7 +3326,7 @@ function buildShareText(){
     var ip = iodPhaseOf(s.iod.value);
     var ipLbl = ip==='pos'?tr('iodPosCond'):ip==='neg'?tr('iodNegCond'):tr('iodNeuCond');
     if (!iodTooOld(s.iod)){
-      L.push('IOD: '+ipLbl+' ('+fmt(s.iod.value)+(s.iod.asOf?' · '+s.iod.asOf:'')+')');
+      L.push('IOD: '+ipLbl+' ('+fmt(s.iod.value)+(s.iod.asOf?' · '+(shotDate(bomDateTs(s.iod.asOf)) || s.iod.asOf):'')+')');
     }
   }
   // MJO (skip if stale, mirror the card's guard)
@@ -3283,7 +3349,8 @@ function buildShareText(){
     L.push((zh?'季风: ':'Monsoon: ')+stLbl+surgeTxt);
   }
   // the 2-second takeaway
-  if (s.verdictText) L.push((zh?'👉 ':'👉 ')+s.verdictText);
+  if (s.verdictText) L.push('👉 '+s.verdictText);
+  if (s.verdictSub)  L.push('   '+s.verdictSub);
   return L.join('\n');
 }
 // WhatsApp glyph (white bubble + handset) for the brand-coloured button.
@@ -3339,6 +3406,7 @@ function shareCancel(){
  * inside that tap takes long enough to lose the permission.
  * ========================================================================== */
 var SHOTS = [];            // [{file, url}]
+var SHOT_SEQ = { i: 1, n: 1 };   // number of the image being drawn, and of how many
 var SHOT_W = 1080, SHOT_PAD = 56;
 var SHOT_URL = 'stanleywoosweeleong.github.io/enso';
 
@@ -3395,7 +3463,17 @@ function shotDraw(o){
   g.textBaseline = 'alphabetic';
   // app name strip
   g.fillStyle = '#0c4a6e'; g.font = '600 30px '+F;
-  g.fillText(LANG==='zh' ? '厄尔尼诺 / 拉尼娜监测' : 'ENSO Monitor', x, y + 30); y += 62;
+  g.fillText(LANG==='zh' ? '厄尔尼诺 / 拉尼娜监测' : 'ENSO Monitor', x, y + 30);
+  // "1 / 3" badge. WhatsApp posts each image as its own message and does not
+  // keep the order we hand over, so the number is what tells friends the order.
+  if (SHOT_SEQ.n > 1){
+    var nb = SHOT_SEQ.i + ' / ' + SHOT_SEQ.n;
+    g.font = '800 40px '+F; var bw = g.measureText(nb).width + 44, bx = SHOT_W - SHOT_PAD - bw;
+    g.fillStyle = '#0c4a6e'; g.beginPath();
+    if (g.roundRect) g.roundRect(bx, y - 6, bw, 60, 30); else g.rect(bx, y - 6, bw, 60);
+    g.fill(); g.fillStyle = '#ffffff'; g.fillText(nb, bx + 22, y + 38);
+  }
+  y += 62;
   // title
   g.fillStyle = '#0f172a'; g.font = '700 54px '+F;
   shotWrap(g, o.title, W).forEach(function(l){ y += 62; g.fillText(l, x, y); }); y += 20;
@@ -3569,7 +3647,10 @@ function shareImages(){
   }
   var d = new Date(), stamp = d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2)+'-'+('0'+d.getDate()).slice(-2);
 
-  Promise.all(jobs.map(function(j){
+  // One after another (not in parallel) so each image is drawn with its number.
+  var total = jobs.length;
+  function one(j, idx){
+    SHOT_SEQ = { i: idx + 1, n: total };
     return j.make().then(shotBlob).catch(function(){
       // A diagram that tainted the canvas: redraw that image without it.
       var redo = j.key==='2-iod' ? shotIod(s, null) : j.key==='3-mjo' ? shotMjo(s, null) : shotNino(s);
@@ -3580,7 +3661,10 @@ function shareImages(){
       if (!file.name) file.name = name;
       return { file:file, url: URL.createObjectURL(b) };
     });
-  })).then(function(list){
+  }
+  jobs.reduce(function(prev, j, idx){
+    return prev.then(function(acc){ return one(j, idx).then(function(r){ acc.push(r); return acc; }); });
+  }, Promise.resolve([])).then(function(list){
     SHOTS = list;
     var files = list.map(function(x){ return x.file; });
     var canShare = !!(navigator.share && navigator.canShare && navigator.canShare({ files: files }));
