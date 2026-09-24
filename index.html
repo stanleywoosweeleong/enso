@@ -350,6 +350,14 @@
   .btn.wabtn{background:#25D366;color:#fff;border:none;display:flex;
     align-items:center;justify-content:center;gap:8px}
   .btn.wabtn:active{background:#1eb857}
+  .btn.imgbtn{background:#0c4a6e;color:#fff;display:flex;align-items:center;
+    justify-content:center;gap:10px;font-size:17px;border-radius:10px}
+  .btn.imgbtn:active{background:#083a57}
+  .shot-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:4px 0 8px}
+  .shot-grid img{width:100%;border:1px solid var(--line);border-radius:8px;display:block;background:#f0f9ff}
+  .shot-msg{font-size:17px;font-weight:500;color:var(--ink);line-height:1.5;margin:6px 0}
+  .shot-skip{font-size:16px;font-weight:500;color:#92400e;background:#fffbeb;
+    border:1px solid #fcd34d;border-radius:8px;padding:8px 10px;margin:6px 0}
   .legend{display:flex;gap:14px;justify-content:center;font-size:11px;
     color:var(--muted);margin-top:8px}
   .legend i{display:inline-block;width:9px;height:9px;border-radius:2px;
@@ -1592,7 +1600,7 @@ var T = {
   weeklyTitle:{zh:'每周 Niño 3.4 海温距平', en:'Weekly Niño 3.4 SST anomaly'},
   trendTitle: {zh:'近 24 季趋势', en:'Last 24 seasons trend'},
   iodTitle:   {zh:'印度洋偶极 (IOD)', en:'Indian Ocean Dipole (IOD)'},
-  iodHint:    {zh:'IOD = 印度洋东西两侧的海温差。对马来西亚的雨量影响很直接，尤其是东侧（靠近苏门答腊）。数值由本 App 取 NOAA OISST 海温距平自行计算，每周更新。',
+  iodHint:    {zh:'IOD = 印度洋东西两侧的海温差。对马来西亚的雨量影响很直接，尤其是东侧（靠近苏门答腊）。数值由本软件取 NOAA OISST 海温距平自行计算，每周更新。',
                en:'IOD = the east–west sea-temperature gradient across the Indian Ocean. It directly affects Malaysian rainfall, especially the eastern side (near Sumatra). Computed here from NOAA OISST anomalies, updated weekly.'},
   iodLatest:  {zh:'最新值 (IOD)', en:'Latest (IOD)'},
   iodSrc:     {zh:'数据来源', en:'Source'},
@@ -1667,7 +1675,7 @@ var T = {
   helpMjo:    {zh:'🌀 季内振荡 (MJO)：一团增强降雨（雷雨云团），每 30–60 天自西向东绕赤道移动一圈，分成 8 个「位相」表示它此刻在地球哪个位置。第 3–5 位相 = 落在海洋大陆（含马来西亚）头顶 → 本区未来 1–2 周偏湿、雷雨多；第 7–8–1 位相 = 走到对面 → 本区偏干；第 2、6 位相为过渡。只有当「振幅 > 1」时 MJO 才算活跃、值得参考；< 1 时信号弱可忽略。MJO 比 ENSO／IOD 短得多——ENSO／IOD 看「这个季节」，MJO 看「未来一两周」，最贴近喷药、采收、农活的安排。注意：精确的位相—降雨对应会随季节略有移动，所以这是趋势参考，不是精确预报。',
                en:'🌀 Madden–Julian Oscillation (MJO): a pulse of enhanced rain (thunderstorm clusters) that circles the equator eastward every 30–60 days. Its lifecycle is split into 8 "phases" showing where it sits right now. Phases 3–5 = over the Maritime Continent (including Malaysia) → wetter here, more thunderstorms for the next 1–2 weeks; phases 7–8–1 = opposite side → drier here; phases 2 & 6 are transitions. The MJO only counts as active when amplitude > 1; below that the signal is weak and can be ignored. MJO is much shorter-term than ENSO/IOD — ENSO/IOD describe "this season," MJO describes "the next week or two," which is closest to spraying, harvesting, and fieldwork timing. Note: the exact phase-to-rainfall mapping shifts a little by season, so treat this as a tendency, not an exact forecast.'},
   mjoOutlookLabel:{zh:'NOAA MJO 监测页面', en:'NOAA MJO monitoring page'},
-  mjoOutlookTxt:{zh:'本 App 的 MJO 数值取自 NOAA PSL 的 ROMI 实时指数（每日更新），并换算成标准 RMM 位相。BOM 与 NOAA 的官方页面都有更详细的相位图与未来传播预测。',
+  mjoOutlookTxt:{zh:'本软件的 MJO 数值取自 NOAA PSL 的 ROMI 实时指数（每日更新），并换算成标准 RMM 位相。BOM 与 NOAA 的官方页面都有更详细的相位图与未来传播预测。',
                  en:'This app reads NOAA PSL\u2019s ROMI real-time index (updated daily) and converts it to the standard RMM phase. Both NOAA and BOM publish fuller phase diagrams and propagation forecasts.'},
   mjoOutlookCheck:{zh:'查看 NOAA 最新 MJO ↗', en:'Check NOAA\u2019s latest MJO ↗'},
   mjoNowLabel:{zh:'现在的情况（每日）：', en:'Right now (daily): '},
@@ -1706,7 +1714,7 @@ var T = {
   helpMon:    {zh:'🌧️ 季风状态 + 季风涌：马来西亚一年有两个季风。东北季风（约 11–3月）是主雨季，东海岸（吉兰丹、登嘉楼、彭亨）与砂拉越、沙巴常有大雨与水患；西南季风（约 5月底–9月）对半岛相对偏干。两者之间是过渡期。最危险的是东北季风期间的「季风涌」：来自西伯利亚的冷空气化作强北风冲过南海，带来连续 1–3 天的暴雨。我们用 MetMalaysia 采用的季风涌指数 (MSI)：925 hPa 经向风在 110–117.5°E、15°N 的平均；当连续 3 天 < −8 m/s 即判定为季风涌。数据来自 Open-Meteo 的 925 hPa 风场（即时计算）。注意：这是趋势监测，正式预警请以 MetMalaysia 官方为准。',
                en:'🌧️ Monsoon status + surge: Malaysia has two monsoons. The Northeast monsoon (~Nov–Mar) is the main rainy season, bringing heavy rain and floods to the east coast (Kelantan, Terengganu, Pahang) and Sarawak/Sabah; the Southwest monsoon (~late May–Sep) is relatively drier for the Peninsula, with an inter-monsoon transition between. The biggest hazard is the NE-monsoon "surge": cold air from Siberia becomes a strong northerly wind racing across the South China Sea, bringing 1–3 days of downpour. We use MetMalaysia\u2019s Meridional Surge Index (MSI): the average 925-hPa meridional wind over 110–117.5°E along 15°N; a surge is flagged when it stays below −8 m/s for 3 consecutive days. Data is computed live from Open-Meteo 925-hPa winds. Note: this is trend monitoring — for official warnings, always follow MetMalaysia.'},
   monOutlookLabel:{zh:'MetMalaysia 官方预警', en:'MetMalaysia official warnings'},
-  monOutlookTxt:{zh:'马来西亚气象局 (MetMalaysia) 发布官方的季风涌预警与暴雨警报（黄／橙／红三级）。本 App 的季风涌为即时估算，正式预警以官方为准。',
+  monOutlookTxt:{zh:'马来西亚气象局 (MetMalaysia) 发布官方的季风涌预警与暴雨警报（黄／橙／红三级）。本软件的季风涌为即时估算，正式预警以官方为准。',
                  en:'The Malaysian Meteorological Department (MetMalaysia) issues official surge alerts and heavy-rain warnings (Yellow/Orange/Red). This app\u2019s surge reading is a live estimate; always defer to MetMalaysia for official warnings.'},
   monOutlookCheck:{zh:'查看 MetMalaysia 预警 ↗', en:'Check MetMalaysia warnings ↗'},
   // ---- ITCZ explainer (concept, no data feed) ----
@@ -1735,12 +1743,12 @@ var T = {
   iodCredit:  {zh:'🙏 本 IOD 功能源自农友 Wei Jian 的提问——他注意到负 IOD 时本地早上常下雨、影响农活。谢谢他的宝贵反馈，让这个工具对大家更有用。',
                en:'🙏 This IOD feature came from a question by fellow grower Wei Jian, who noticed that negative IOD often brings morning rain here and affects fieldwork. Thank you for the valuable feedback that made this tool better for everyone.'},
   srcTitle:   {zh:'数据来源', en:'Data sources'},
-  qrTitle:    {zh:'扫码打开这个 App', en:'Scan to open this app'},
+  qrTitle:    {zh:'扫码打开这个软件', en:'Scan to open this app'},
   qrHint:     {zh:'用手机相机扫描，分享给其他农友', en:'Scan with your phone camera — share with other farmers'},
   staleWarn:  {zh:'⚠️ 数据可能过期', en:'⚠️ Data looks old'},
   offlineCache:{zh:'📴 离线模式 · 显示缓存数据', en:'📴 Offline · showing cached data'},
   cachedAt:   {zh:'数据缓存于', en:'Data cached'},
-  staleNote:  {zh:'最新一周已落后约 {n} 周。可能是 NOAA 数据延迟，或 App 未更新。请点「刷新数据」，或确认已上传最新版本。',
+  staleNote:  {zh:'最新一周已落后约 {n} 周。可能是 NOAA 数据延迟，或软件未更新。请点「刷新数据」，或确认已上传最新版本。',
                en:'The latest week is about {n} weeks behind. NOAA\u2019s feed may be delayed, or the app may be outdated. Try "Refresh data", or check you uploaded the newest version.'},
   elnino:     {zh:'厄尔尼诺', en:'El Niño'},
   lanina:     {zh:'拉尼娜', en:'La Niña'},
@@ -1763,6 +1771,24 @@ var T = {
   verystrong: {zh:'极强', en:'Very strong'},
   refresh:    {zh:'刷新数据', en:'Refresh data'},
   shareBtn:   {zh:'分享到 WhatsApp', en:'Share to WhatsApp'},
+  shotBtn:    {zh:'分享图片（海域地图 · IOD · MJO）', en:'Share images (map · IOD · MJO)'},
+  shotTitle:  {zh:'分享图片', en:'Share images'},
+  shotMaking: {zh:'正在生成图片…', en:'Making the images…'},
+  shotShare:  {zh:'分享', en:'Share'},
+  shotSave:   {zh:'保存到手机', en:'Save'},
+  shotReady:  {zh:'{n} 张图片已准备好。点「分享」一次发给朋友或群组。', en:'{n} images ready. Tap Share to send them together.'},
+  shotReadyNoShare:{zh:'{n} 张图片已准备好。这个浏览器不支持直接分享图片，请点「保存到手机」再从相册发送。', en:'{n} images ready. This browser cannot share images directly — tap Save, then send them from your gallery.'},
+  shotSkipped:{zh:'已略过（数据过期，不分享旧数字）：{l}', en:'Left out (data out of date — old numbers are not shared): {l}'},
+  shotNone:   {zh:'三项数据目前都已过期，暂时没有可分享的图片。请先点「刷新数据」。', en:'All three readings are out of date, so there is nothing to share. Tap Refresh first.'},
+  shotFailed: {zh:'图片生成失败：{e}', en:'Could not make the images: {e}'},
+  shotObsWeek:{zh:'观测周', en:'Week of'},
+  shotObsDay: {zh:'观测日', en:'Observed'},
+  shotSrc:    {zh:'数据来源', en:'Source'},
+  shotMade:   {zh:'生成于', en:'Made'},
+  shotIodComputed:{zh:'NOAA OISST（本软件自行计算）', en:'NOAA OISST (computed by this app)'},
+  shotDataDate:{zh:'数据日期', en:'Data date'},
+  shotNinoNote:{zh:'橙框 Niño 3.4 是判断厄尔尼诺／拉尼娜的主指标。红 = 偏暖，蓝 = 偏冷（°C 距平）。', en:'The orange-framed Niño 3.4 is the main El Niño / La Niña index. Red = warmer, blue = cooler than normal (°C).'},
+  shotMjoLbl: {zh:'位相 {p} · 振幅 {a}', en:'Phase {p} · amplitude {a}'},
   sharePrevTitle:{zh:'预览与编辑 — 发送前可修改', en:'Preview & edit — adjust before sending'},
   shareSend:  {zh:'发送', en:'Send'},
   shareCancel:{zh:'取消', en:'Cancel'},
@@ -1773,7 +1799,7 @@ var T = {
   helpToggle: {zh:'这些数字是什么意思？', en:'What do these numbers mean?'},
   helpClose:  {zh:'收起说明', en:'Close explanation'},
   helpClose:  {zh:'收起说明', en:'Hide explanation'},
-  helpIntro:  {zh:'这个 App 追踪太平洋赤道海面的温度，用来判断现在是 厄尔尼诺、拉尼娜，还是中性。这是影响马来西亚雨季旱季的大背景。',
+  helpIntro:  {zh:'这个软件追踪太平洋赤道海面的温度，用来判断现在是 厄尔尼诺、拉尼娜，还是中性。这是影响马来西亚雨季旱季的大背景。',
                en:'This app tracks the temperature of the Pacific Ocean along the equator. That tells us whether we are in El Niño, La Niña, or Neutral — the big pattern behind Malaysia\u2019s wet and dry seasons.'},
   helpElnino: {zh:'厄尔尼诺 = 太平洋偏暖 → 马来西亚通常 偏干、少雨。要防旱、防火、留意花期。',
                en:'El Niño = Pacific warmer than usual → Malaysia is usually drier, less rain. Watch for drought, fire, and flowering.'},
@@ -1874,7 +1900,7 @@ var T = {
   // sentence would freeze on the day it was typed while the live line below it
   // keeps updating — the two would eventually contradict each other in the same
   // panel. Describe the product; let the fetched values speak for the content.
-  helpOutlookTxt:   {zh:'NOAA 每月人工发布一次官方展望：预警／守望状态，加一段简要研判。它不是本 App 由实时数据算出来的。下面一行是最近一次抓取到的官方状态与发布日期；若已超过 45 天未更新，则宁可不显示，也不给你过期的结论。',
+  helpOutlookTxt:   {zh:'NOAA 每月人工发布一次官方展望：预警／守望状态，加一段简要研判。它不是本软件由实时数据算出来的。下面一行是最近一次抓取到的官方状态与发布日期；若已超过 45 天未更新，则宁可不显示，也不给你过期的结论。',
                      en:'NOAA issues an official outlook about once a month — an advisory/watch status plus a short synopsis. It is human-issued, not computed from this app\u2019s live data. The line below is the most recent one fetched, with its issue date; if it is more than 45 days old nothing is shown rather than a stale conclusion.'},
   helpOutlookCheck: {zh:'查看 NOAA 最新展望 ↗', en:'Check NOAA\u2019s latest outlook ↗'},
   iodMapTitle:{zh:'印度洋的两端（西 vs 东）', en:'The two ends of the Indian Ocean (west vs east)'},
@@ -2048,6 +2074,10 @@ function iodPhaseOf(v){
   return 'neu';
 }
 // Short month name in the current language for a 1-12 month number.
+function mjoDateTxt(m){
+  return LANG === 'zh' ? m.year+'年'+m.month+'月'+m.day+'日'
+                       : monthName(m.month)+' '+m.day+', '+m.year;
+}
 function monthName(m){
   var en = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   if (LANG === 'zh') return m + '月';
@@ -2072,6 +2102,9 @@ function mjoEffect(phase){
   return 'transition'; // 2 or 6
 }
 function fmt(n){ return (n>=0?'+':'') + n.toFixed(2); }
+// CPC's weekly file carries one decimal. Printing two ("+3.00") claims a
+// precision the source does not have, so weekly values use fmt1.
+function fmt1(n){ return (n>=0?'+':'') + n.toFixed(1); }
 // Format a cache timestamp as a short local date+time for the offline banner.
 function fmtCacheTime(ms){
   try {
@@ -2302,7 +2335,7 @@ function mjoCard(mjo){
   var dataTs = new Date(mjo.year, mjo.month-1, mjo.day).getTime();
   var ageDays = Math.floor((Date.now() - dataTs) / (24*3600*1000));
   var stale = ageDays > 10;
-  var dateTxt = monthName(mjo.month)+' '+mjo.day+', '+mjo.year;
+  var dateTxt = mjoDateTxt(mjo);
 
   if (stale){
     // Old data — show it honestly as out of date, no phase advice, no wet/dry.
@@ -2946,7 +2979,7 @@ function regionCells(wk, stale){
     return '<div class="nreg'+(d.key?' key':'')+'">'
       +'<div class="rk">Niño '+d.id+'</div>'
       +'<div class="rv'+(has?'':' na')+'"'+(has?' style="color:'+col+'"':'')+'>'
-      + (has ? fmt(d.v) : '\u2014') +'</div></div>';
+      + (has ? fmt1(d.v) : '\u2014') +'</div></div>';
   }).join('');
 }
 
@@ -2991,7 +3024,7 @@ function render(roni, weekly, cachedAt, iod, mjo, mon, out){
     wkDeltaTxt = tr('wkSame'); wkDeltaCol = '#475569';
   } else {
     wkDeltaTxt = (wkDelta>0 ? '▲ +' : '▼ −')
-               + Math.abs(wkDelta).toFixed(2) + '°C';
+               + Math.abs(wkDelta).toFixed(1) + '°C';
     wkDeltaCol = wkDelta>0 ? '#dc2626' : '#2563eb';
   }
   // Last 12 weekly rows as a small spark, same bar geometry as the seasonal one.
@@ -3045,7 +3078,7 @@ function render(roni, weekly, cachedAt, iod, mjo, mon, out){
   // (and in the current language) whenever it is opened.
   HELP_STATE = { phase:phase, strength:strength, t3:t3,
                  roni:latest.anom, wk:wkLatest.nino34, iod:iod, mjo:mjo, mon:mon, out:out,
-                 roniStale:roniStale, wkStale:wkStale,
+                 roniStale:roniStale, wkStale:wkStale, wkRow:wkLatest,
                  roniLbl: latest.seas+' '+latest.yr, wkDate: wkLatest.date };
   // Always-visible plain verdict for the hero (the 2-second takeaway).
   // Only fresh inputs may drive it: stale RONI -> no verdict; stale weekly -> no tip.
@@ -3115,8 +3148,8 @@ function render(roni, weekly, cachedAt, iod, mjo, mon, out){
         + tr('staleNote').replace('{n}', wkAgeWeeks)
         + '<br><span class="staledbg">'+wkDebug+'</span></div>'
       : '')
-    +'<div class="row"><span class="k">'+tr('nino34')+' · '+tr('week')+' ('+wkLatest.date+')</span><span class="v '+(phaseOf(wkLatest.nino34))+'">'+fmt(wkLatest.nino34)+'°C</span></div>'
-    +'<div class="row"><span class="k">'+tr('wkChange')+'<br><span class="k-sub">'+tr('weekAgo')+' ('+wkPrev.date+') '+fmt(wkPrev.nino34)+'°C</span></span>'
+    +'<div class="row"><span class="k">'+tr('nino34')+' · '+tr('week')+' ('+wkLatest.date+')</span><span class="v '+(phaseOf(wkLatest.nino34))+'">'+fmt1(wkLatest.nino34)+'°C</span></div>'
+    +'<div class="row"><span class="k">'+tr('wkChange')+'<br><span class="k-sub">'+tr('weekAgo')+' ('+wkPrev.date+') '+fmt1(wkPrev.nino34)+'°C</span></span>'
       +'<span class="v" style="color:'+wkDeltaCol+'">'+wkDeltaTxt+'</span></div>'
     +'<div class="wktrend">'+tr('wkTrendLbl')+'</div>'
     +'<div class="spark spark-wk">'+wkBars+'</div>'
@@ -3174,6 +3207,7 @@ function render(roni, weekly, cachedAt, iod, mjo, mon, out){
 
   +'<button class="btn ghost" onclick="load()">'+tr('refresh')+'</button>'
   +'<button class="btn wabtn" onclick="shareWA()" aria-label="WhatsApp">'+waIcon()+'</button>'
+  +'<button class="btn imgbtn" onclick="shareImages()">'+imgIcon()+'<span>'+tr('shotBtn')+'</span></button>'
   +'<div class="swver">'+tr('swBuild')+' <span id="swver">\u2026</span></div>';
 
   document.getElementById('app').innerHTML = html;
@@ -3220,7 +3254,7 @@ function buildShareText(){
   if (s.roniStale) L.push('ENSO: '+tr('ensoStaleShort'));
   else L.push('ENSO: '+phLbl+' (RONI '+s.roniLbl+' · '+fmt(s.roni)+')');
   if (!s.wkStale && typeof s.wk==='number')
-    L.push((zh?'每周 Niño3.4: ':'Weekly Niño3.4: ')+fmt(s.wk)+' ('+s.wkDate+')');
+    L.push((zh?'每周 Niño3.4: ':'Weekly Niño3.4: ')+fmt1(s.wk)+' ('+s.wkDate+')');
   // IOD (only when good + fresh, same rule as the card)
   if (s.iod && s.iod.ok && typeof s.iod.value==='number'){
     var ip = iodPhaseOf(s.iod.value);
@@ -3288,6 +3322,297 @@ function shareCancel(){
   var ov = document.getElementById('shareoverlay');
   ov.classList.remove('show');
   ov.innerHTML = '';
+  shotRelease();
+}
+
+/* ===================== SHARE AS IMAGES ======================================
+ * One tap builds three purpose-made PNGs (Niño regions map, IOD, MJO) and
+ * offers them together through the phone's share sheet, so they arrive in
+ * WhatsApp as one batch instead of three separate screenshots.
+ *
+ * Images are drawn, not screenshotted: fixed 1080px width, large text, and
+ * every image carries its own observation date, source and the app link.
+ * Same rule as the text share: a stale reading is LEFT OUT, never pictured.
+ *
+ * They are built BEFORE the Share button is shown. Browsers (iOS especially)
+ * only allow navigator.share() straight after a tap; building the images
+ * inside that tap takes long enough to lose the permission.
+ * ========================================================================== */
+var SHOTS = [];            // [{file, url}]
+var SHOT_W = 1080, SHOT_PAD = 56;
+var SHOT_URL = 'stanleywoosweeleong.github.io/enso';
+
+function imgIcon(){
+  return '<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">'
+    +'<rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="10" r="1.8"/>'
+    +'<path d="M21 16l-5-5-8 8"/></svg>';
+}
+function shotFont(){
+  return (getComputedStyle(document.body).fontFamily || 'sans-serif').replace(/"/g, "'");
+}
+function shotRelease(){
+  SHOTS.forEach(function(s){ try { URL.revokeObjectURL(s.url); } catch(e){} });
+  SHOTS = [];
+}
+
+// Word-wrap that also breaks between Chinese characters.
+function shotWrap(g, text, maxW){
+  var toks = String(text).match(/[\u2E80-\u9FFF\uFF00-\uFFEF\u3000-\u303F]|[^\s\u2E80-\u9FFF\uFF00-\uFFEF\u3000-\u303F]+\s*|\s+/g) || [];
+  var lines = [], cur = '';
+  toks.forEach(function(t){
+    var trial = cur + t;
+    if (g.measureText(trial.trimEnd()).width > maxW && cur){
+      lines.push(cur.trimEnd()); cur = t.trimStart();
+    } else cur = trial;
+  });
+  if (cur.trim()) lines.push(cur.trimEnd());
+  return lines;
+}
+
+// Rasterise one of the app's own SVG diagrams at the pixel width we draw it.
+// Resolves null on any failure, and the image is simply drawn without it.
+function shotSvg(svg, w){
+  return new Promise(function(res){
+    var vb = svg.match(/viewBox="0 0 ([\d.]+) ([\d.]+)"/);
+    if (!vb){ res(null); return; }
+    var h = Math.round(w * parseFloat(vb[2]) / parseFloat(vb[1]));
+    svg = svg.replace('<svg ', '<svg xmlns="http://www.w3.org/2000/svg" width="'+w+'" height="'+h
+                      +'" font-family="'+shotFont()+'" ');
+    var img = new Image();
+    img.onload = function(){ res({ img: img, w: w, h: h }); };
+    img.onerror = function(){ res(null); };
+    img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+  });
+}
+
+// Shared frame: heading, big-number block supplied by `body`, date/source/link
+// footer. Drawn on a tall scratch canvas, then cropped to what was used.
+function shotDraw(o){
+  var F = shotFont();
+  var c = document.createElement('canvas'); c.width = SHOT_W; c.height = 2600;
+  var g = c.getContext('2d'), x = SHOT_PAD, W = SHOT_W - 2*SHOT_PAD, y = SHOT_PAD;
+  g.fillStyle = '#f0f9ff'; g.fillRect(0, 0, c.width, c.height);
+  g.textBaseline = 'alphabetic';
+  // app name strip
+  g.fillStyle = '#0c4a6e'; g.font = '600 30px '+F;
+  g.fillText(LANG==='zh' ? '厄尔尼诺 / 拉尼娜监测' : 'ENSO Monitor', x, y + 30); y += 62;
+  // title
+  g.fillStyle = '#0f172a'; g.font = '700 54px '+F;
+  shotWrap(g, o.title, W).forEach(function(l){ y += 62; g.fillText(l, x, y); }); y += 20;
+  y = o.body(g, x, y, W, F);
+  // footer
+  y += 34; g.fillStyle = '#cbd5e1'; g.fillRect(x, y, W, 2); y += 52;
+  g.fillStyle = '#0f172a'; g.font = '500 34px '+F;
+  o.foot.forEach(function(line){
+    if (LANG !== 'zh') line = line.replace('\uff1a', ': ');   // full-width colon is Chinese-only
+    shotWrap(g, line, W).forEach(function(l){ g.fillText(l, x, y); y += 48; });
+  });
+  g.fillStyle = '#0e7490'; g.font = '600 32px '+F; g.fillText(SHOT_URL, x, y); y += 44;
+  g.fillStyle = '#475569'; g.font = '500 26px '+F;
+  var now = new Date();
+  g.fillText(tr('shotMade')+' '+now.getFullYear()+'-'+('0'+(now.getMonth()+1)).slice(-2)+'-'+('0'+now.getDate()).slice(-2), x, y);
+  y += SHOT_PAD - 10;
+  var out = document.createElement('canvas'); out.width = SHOT_W; out.height = Math.ceil(y);
+  out.getContext('2d').drawImage(c, 0, 0);
+  return out;
+}
+
+function shotBadge(g, x, y, text, bg, fg, F){
+  g.font = '700 36px '+F;
+  var w = g.measureText(text).width + 48;
+  g.fillStyle = bg; g.beginPath();
+  if (g.roundRect) g.roundRect(x, y, w, 64, 32); else g.rect(x, y, w, 64);
+  g.fill(); g.fillStyle = fg; g.fillText(text, x + 24, y + 45);
+  return y + 64;
+}
+function shotPanel(g, x, y, w, h){
+  g.fillStyle = '#ffffff'; g.strokeStyle = '#cbd5e1'; g.lineWidth = 2;
+  g.beginPath(); if (g.roundRect) g.roundRect(x, y, w, h, 20); else g.rect(x, y, w, h);
+  g.fill(); g.stroke();
+}
+function shotCol(v){ return v >= 0.5 ? '#dc2626' : v <= -0.5 ? '#2563eb' : '#0f172a'; }
+
+// 1. Niño regions: the map exactly as the card shows it + the four readings.
+function shotNino(s){
+  var wk = s.wkRow;
+  var mapCv = document.getElementById('nmap-card');
+  return shotDraw({
+    title: tr('mapCardTitle'),
+    body: function(g, x, y, W, F){
+      if (mapCv && mapCv.width > 0){
+        var h = Math.round(W * mapCv.height / mapCv.width);
+        shotPanel(g, x, y, W, h + 24);
+        try { g.drawImage(mapCv, x + 12, y + 12, W - 24, h); } catch(e){}
+        y += h + 24 + 28;
+      }
+      var regs = [['1+2', wk.nino12], ['3', wk.nino3], ['3.4', wk.nino34], ['4', wk.nino4]];
+      var cw = (W - 3*16) / 4;
+      regs.forEach(function(r, i){
+        var cx = x + i*(cw + 16), key = r[0] === '3.4';
+        g.fillStyle = key ? '#fffbeb' : '#ffffff'; g.strokeStyle = key ? '#f59e0b' : '#cbd5e1';
+        g.lineWidth = key ? 4 : 2; g.beginPath();
+        if (g.roundRect) g.roundRect(cx, y, cw, 150, 18); else g.rect(cx, y, cw, 150);
+        g.fill(); g.stroke();
+        g.textAlign = 'center';
+        g.fillStyle = '#334155'; g.font = '600 30px '+F; g.fillText('Niño '+r[0], cx + cw/2, y + 50);
+        g.fillStyle = shotCol(r[1]); g.font = '800 50px '+F;
+        g.fillText(typeof r[1]==='number' ? fmt1(r[1]) : '\u2014', cx + cw/2, y + 118);
+        g.textAlign = 'left';
+      });
+      y += 150 + 16;
+      g.fillStyle = '#0f172a'; g.font = '500 34px '+F;
+      return shotPara(g, tr('shotNinoNote'), x, y, W, 50);
+    },
+    foot: [ tr('shotObsWeek')+'：'+(shotDate(weekTs(wk.date)) || wk.date),
+            tr('shotSrc')+'：NOAA CPC' ]
+  });
+}
+
+// 2. IOD: state badge, big value, the dipole diagram.
+function shotIod(s, dia){
+  var iod = s.iod, p = iodPhaseOf(iod.value);
+  var lbl = p==='pos' ? tr('iodPosCond') : p==='neg' ? tr('iodNegCond') : tr('iodNeuCond');
+  var bg = p==='pos' ? '#fee2e2' : p==='neg' ? '#dbeafe' : '#f1f5f9';
+  var fg = p==='pos' ? '#b91c1c' : p==='neg' ? '#1d4ed8' : '#334155';
+  return shotDraw({
+    title: tr('iodTitle'),
+    body: function(g, x, y, W, F){
+      y = shotBadge(g, x, y, lbl, bg, fg, F) + 130;
+      g.fillStyle = fg; g.font = '800 140px '+F; g.fillText(fmt(iod.value), x, y);
+      g.fillStyle = '#334155'; g.font = '500 34px '+F; g.fillText(tr('iodUnit'), x, y + 56);
+      y += 56 + 40;
+      // No diagram here: the IOD map's labels are 7-10 units in a 360-wide
+      // viewBox, far too small once shrunk into a chat thumbnail.
+      g.fillStyle = '#0f172a'; g.font = '500 36px '+F;
+      return shotPara(g, tr('iodHint'), x, y, W, 54);
+    },
+    foot: [ tr('shotDataDate')+'：'+(shotDate(bomDateTs(iod.asOf)) || iod.asOf),
+            tr('shotSrc')+'：'+(iod.monthly ? 'NOAA PSL' : iod.computed ? tr('shotIodComputed') : 'BOM') ]
+  });
+}
+
+// 3. MJO: phase and amplitude, region, wet/dry meaning, the phase wheel.
+function shotMjo(s, dia){
+  var m = s.mjo, active = m.amp >= MJO_ACTIVE, eff = mjoEffect(m.phase);
+  var badge = active ? tr('mjoActiveBadge') : tr('mjoWeakBadge');
+  var fg = !active ? '#334155' : eff==='wet' ? '#1d4ed8' : eff==='dry' ? '#b91c1c' : '#334155';
+  var bg = !active ? '#f1f5f9' : eff==='wet' ? '#dbeafe' : eff==='dry' ? '#fee2e2' : '#f1f5f9';
+  var meaning = !active ? '' : (eff==='wet' ? tr('mjoWet') : eff==='dry' ? tr('mjoDry') : tr('mjoTrans'));
+  return shotDraw({
+    title: tr('mjoTitle'),
+    body: function(g, x, y, W, F){
+      y = shotBadge(g, x, y, badge, bg, fg, F) + 40;
+      g.fillStyle = '#0f172a'; g.font = '800 64px '+F;
+      y += 64; g.fillText(tr('shotMjoLbl').replace('{p}', m.phase).replace('{a}', m.amp.toFixed(2)), x, y);
+      g.fillStyle = '#334155'; g.font = '600 38px '+F; y += 58; g.fillText(tr(mjoRegionKey(m.phase)), x, y);
+      if (meaning){
+        g.fillStyle = fg; g.font = '700 38px '+F;
+        shotWrap(g, meaning, W).forEach(function(l){ y += 52; g.fillText(l, x, y); });
+      }
+      y += 36;
+      if (dia){ shotPanel(g, x, y, W, dia.h + 24); g.drawImage(dia.img, x + 12, y + 12, W - 24, dia.h); y += dia.h + 24 + 20; }
+      return y;
+    },
+    foot: [ tr('shotObsDay')+'：'+mjoDateTxt(m), tr('shotSrc')+'：NOAA ROMI' ]
+  });
+}
+
+function shotDate(ts){
+  if (!(ts > 0)) return '';
+  var d = new Date(ts);
+  var en = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  return LANG === 'zh' ? d.getUTCFullYear()+'年'+(d.getUTCMonth()+1)+'月'+d.getUTCDate()+'日'
+                       : d.getUTCDate()+' '+en[d.getUTCMonth()]+' '+d.getUTCFullYear();
+}
+// Paragraph: the first line sits one line-height below y, never on top of it.
+function shotPara(g, text, x, y, W, lh){
+  shotWrap(g, text, W).forEach(function(l){ y += lh; g.fillText(l, x, y); });
+  return y;
+}
+function shotBlob(cv){
+  return new Promise(function(res, rej){
+    try { cv.toBlob(function(b){ b ? res(b) : rej(new Error('toBlob')); }, 'image/png'); }
+    catch(e){ rej(e); }   // SecurityError if a diagram tainted the canvas
+  });
+}
+
+function shotSheet(inner){
+  var ov = document.getElementById('shareoverlay');
+  ov.innerHTML = '<div class="share-panel" onclick="event.stopPropagation()">'
+    +'<div class="share-head">'+tr('shotTitle')+'</div>'+inner+'</div>';
+  ov.classList.add('show');
+}
+
+function shareImages(){
+  var s = HELP_STATE;
+  if (!s) return;
+  shotRelease();
+  shotSheet('<div class="shot-msg">'+tr('shotMaking')+'</div>');
+
+  // Same freshness rules as the cards and the text share.
+  var jobs = [], skipped = [];
+  if (s.wkRow && !s.wkStale) jobs.push({ key:'1-nino-regions', make:function(){ return Promise.resolve(shotNino(s)); } });
+  else skipped.push(tr('mapCardTitle'));
+  if (s.iod && s.iod.ok === true && typeof s.iod.value === 'number' && !iodTooOld(s.iod))
+    jobs.push({ key:'2-iod', make:function(){ return Promise.resolve(shotIod(s, null)); } });
+  else skipped.push('IOD');
+  var mjoAge = s.mjo ? ageDays(new Date(s.mjo.year, s.mjo.month-1, s.mjo.day).getTime()) : Infinity;
+  if (s.mjo && mjoAge <= MAX_AGE_DAYS.mjo)
+    jobs.push({ key:'3-mjo', make:function(){ return shotSvg(mjoWheel(s.mjo), SHOT_W - 2*SHOT_PAD - 24).then(function(d){ return shotMjo(s, d); }); } });
+  else skipped.push('MJO');
+
+  var skipHtml = skipped.length ? '<div class="shot-skip">'+tr('shotSkipped').replace('{l}', skipped.join('、'))+'</div>' : '';
+  if (!jobs.length){
+    shotSheet(skipHtml.replace('shot-skip','shot-msg')+'<div class="shot-msg">'+tr('shotNone')+'</div>'
+      +'<div class="share-actions"><button class="btn ghost" onclick="shareCancel()">'+tr('shareCancel')+'</button></div>');
+    return;
+  }
+  var d = new Date(), stamp = d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2)+'-'+('0'+d.getDate()).slice(-2);
+
+  Promise.all(jobs.map(function(j){
+    return j.make().then(shotBlob).catch(function(){
+      // A diagram that tainted the canvas: redraw that image without it.
+      var redo = j.key==='2-iod' ? shotIod(s, null) : j.key==='3-mjo' ? shotMjo(s, null) : shotNino(s);
+      return shotBlob(redo);
+    }).then(function(b){
+      var name = 'enso-'+stamp+'-'+j.key+'.png';
+      var file = (typeof File === 'function') ? new File([b], name, { type:'image/png' }) : b;
+      if (!file.name) file.name = name;
+      return { file:file, url: URL.createObjectURL(b) };
+    });
+  })).then(function(list){
+    SHOTS = list;
+    var files = list.map(function(x){ return x.file; });
+    var canShare = !!(navigator.share && navigator.canShare && navigator.canShare({ files: files }));
+    shotSheet(
+      '<div class="shot-grid">'+list.map(function(x){ return '<img src="'+x.url+'" alt="">'; }).join('')+'</div>'
+      +skipHtml
+      +'<div class="shot-msg">'+tr(canShare ? 'shotReady' : 'shotReadyNoShare').replace('{n}', list.length)+'</div>'
+      +'<div class="share-actions">'
+        +'<button class="btn ghost" onclick="shareCancel()">'+tr('shareCancel')+'</button>'
+        +'<button class="btn ghost" onclick="shotSave()">'+tr('shotSave')+'</button>'
+        +(canShare ? '<button class="btn imgbtn" onclick="shotShare()">'+tr('shotShare')+'</button>' : '')
+      +'</div>');
+  }).catch(function(e){
+    shotSheet('<div class="shot-skip">'+tr('shotFailed').replace('{e}', (e && e.message) || e)+'</div>'
+      +'<div class="share-actions"><button class="btn ghost" onclick="shareCancel()">'+tr('shareCancel')+'</button></div>');
+  });
+}
+
+function shotShare(){
+  if (!SHOTS.length) return;
+  navigator.share({ files: SHOTS.map(function(x){ return x.file; }) })
+    .then(function(){ shareCancel(); })
+    .catch(function(e){ if (e && e.name !== 'AbortError') shotSave(); }); // cancelled -> keep sheet open
+}
+function shotSave(){
+  SHOTS.forEach(function(x, i){
+    setTimeout(function(){
+      var a = document.createElement('a');
+      a.href = x.url; a.download = x.file.name || ('enso-'+i+'.png');
+      document.body.appendChild(a); a.click(); a.remove();
+    }, i * 400);   // spaced out: some browsers drop back-to-back downloads
+  });
 }
 
 function toggleLang(){
