@@ -354,6 +354,8 @@
   .btn.imgbtn{background:#0c4a6e;color:#fff;display:flex;align-items:center;
     justify-content:center;gap:10px;font-size:17px;border-radius:10px}
   .btn.imgbtn:active{background:#083a57}
+  .shot-one{max-height:52vh;overflow:auto;border:1px solid var(--line);border-radius:10px;margin:4px 0 8px;background:#e0f2fe}
+  .shot-one img{width:100%;display:block}
   .shot-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:4px 0 8px}
   .shot-grid img{width:100%;border:1px solid var(--line);border-radius:8px;display:block;background:#f0f9ff}
   .shot-msg{font-size:17px;font-weight:500;color:var(--ink);line-height:1.5;margin:6px 0}
@@ -1786,13 +1788,13 @@ var T = {
   verystrong: {zh:'极强', en:'Very strong'},
   refresh:    {zh:'刷新数据', en:'Refresh data'},
   shareBtn:   {zh:'分享到 WhatsApp', en:'Share to WhatsApp'},
-  shotBtn:    {zh:'分享图片（海域地图 · IOD · MJO）', en:'Share images (map · IOD · MJO)'},
+  shotBtn:    {zh:'分享图片（海域地图 · IOD · MJO）', en:'Share as image (map · IOD · MJO)'},
   shotTitle:  {zh:'分享图片', en:'Share images'},
   shotMaking: {zh:'正在生成图片…', en:'Making the images…'},
   shotShare:  {zh:'分享', en:'Share'},
   shotSave:   {zh:'保存到手机', en:'Save'},
-  shotReady:  {zh:'{n} 张图片已准备好。点「分享」一次发给朋友或群组。', en:'{n} images ready. Tap Share to send them together.'},
-  shotReadyNoShare:{zh:'{n} 张图片已准备好。这个浏览器不支持直接分享图片，请点「保存到手机」再从相册发送。', en:'{n} images ready. This browser cannot share images directly — tap Save, then send them from your gallery.'},
+  shotReady:  {zh:'图片已准备好（地图、IOD、MJO 合成一张，顺序固定）。点「分享」发给朋友或群组。', en:'Image ready (map, IOD and MJO in one picture, always in order). Tap Share to send it.'},
+  shotReadyNoShare:{zh:'图片已准备好。这个浏览器不支持直接分享图片，请点「保存到手机」再从相册发送。', en:'Image ready. This browser cannot share images directly — tap Save, then send it from your gallery.'},
   shotSkipped:{zh:'已略过（数据过期，不分享旧数字）：{l}', en:'Left out (data out of date — old numbers are not shared): {l}'},
   shotNone:   {zh:'三项数据目前都已过期，暂时没有可分享的图片。请先点「刷新数据」。', en:'All three readings are out of date, so there is nothing to share. Tap Refresh first.'},
   shotFailed: {zh:'图片生成失败：{e}', en:'Could not make the images: {e}'},
@@ -3458,41 +3460,77 @@ function shotSvg(svg, w){
 function shotDraw(o){
   var F = shotFont();
   var c = document.createElement('canvas'); c.width = SHOT_W; c.height = 2600;
-  var g = c.getContext('2d'), x = SHOT_PAD, W = SHOT_W - 2*SHOT_PAD, y = SHOT_PAD;
-  g.fillStyle = '#f0f9ff'; g.fillRect(0, 0, c.width, c.height);
+  var g = c.getContext('2d'), x = SHOT_PAD, W = SHOT_W - 2*SHOT_PAD, y = SHOT_PAD - 10;
+  g.fillStyle = '#ffffff'; g.fillRect(0, 0, c.width, c.height);
   g.textBaseline = 'alphabetic';
-  // app name strip
-  g.fillStyle = '#0c4a6e'; g.font = '600 30px '+F;
-  g.fillText(LANG==='zh' ? '厄尔尼诺 / 拉尼娜监测' : 'ENSO Monitor', x, y + 30);
-  // "1 / 3" badge. WhatsApp posts each image as its own message and does not
-  // keep the order we hand over, so the number is what tells friends the order.
+  // Section number in a circle, then the title beside it: reading order is
+  // printed on the picture itself.
+  var tx = x;
   if (SHOT_SEQ.n > 1){
-    var nb = SHOT_SEQ.i + ' / ' + SHOT_SEQ.n;
-    g.font = '800 40px '+F; var bw = g.measureText(nb).width + 44, bx = SHOT_W - SHOT_PAD - bw;
-    g.fillStyle = '#0c4a6e'; g.beginPath();
-    if (g.roundRect) g.roundRect(bx, y - 6, bw, 60, 30); else g.rect(bx, y - 6, bw, 60);
-    g.fill(); g.fillStyle = '#ffffff'; g.fillText(nb, bx + 22, y + 38);
+    g.fillStyle = '#0c4a6e'; g.beginPath(); g.arc(x + 34, y + 44, 34, 0, 2*Math.PI); g.fill();
+    g.fillStyle = '#ffffff'; g.font = '800 44px '+F; g.textAlign = 'center';
+    g.fillText(String(SHOT_SEQ.i), x + 34, y + 60); g.textAlign = 'left';
+    tx = x + 88;
   }
-  y += 62;
-  // title
   g.fillStyle = '#0f172a'; g.font = '700 54px '+F;
-  shotWrap(g, o.title, W).forEach(function(l){ y += 62; g.fillText(l, x, y); }); y += 20;
+  shotWrap(g, o.title, W - (tx - x)).forEach(function(l, k){ g.fillText(l, tx, y + 64 + k*62); y += 62; });
+  y += 30;
   y = o.body(g, x, y, W, F);
-  // footer
-  y += 34; g.fillStyle = '#cbd5e1'; g.fillRect(x, y, W, 2); y += 52;
+  y += 30; g.fillStyle = '#cbd5e1'; g.fillRect(x, y, W, 2); y += 50;
   g.fillStyle = '#0f172a'; g.font = '500 34px '+F;
   o.foot.forEach(function(line){
     if (LANG !== 'zh') line = line.replace('\uff1a', ': ');   // full-width colon is Chinese-only
     shotWrap(g, line, W).forEach(function(l){ g.fillText(l, x, y); y += 48; });
   });
-  g.fillStyle = '#0e7490'; g.font = '600 32px '+F; g.fillText(SHOT_URL, x, y); y += 44;
-  g.fillStyle = '#475569'; g.font = '500 26px '+F;
-  var now = new Date();
-  g.fillText(tr('shotMade')+' '+now.getFullYear()+'-'+('0'+(now.getMonth()+1)).slice(-2)+'-'+('0'+now.getDate()).slice(-2), x, y);
-  y += SHOT_PAD - 10;
+  y += SHOT_PAD - 40;
   var out = document.createElement('canvas'); out.width = SHOT_W; out.height = Math.ceil(y);
   out.getContext('2d').drawImage(c, 0, 0);
   return out;
+}
+
+// Stack the sections into ONE picture, so WhatsApp cannot reorder them.
+// Two columns, not one tall strip: WhatsApp shrinks a photo to fit its longest
+// side, and a 3,900px-tall strip would come out with unreadably small text.
+// Column 1 holds sections 1-2, column 2 holds section 3; with fewer sections
+// each gets its own column.
+function shotCombine(parts){
+  var F = shotFont(), GAP = 28, M = 36;
+  var cols = parts.length === 3 ? [[parts[0], parts[1]], [parts[2]]] : parts.map(function(p){ return [p]; });
+  var colH = cols.map(function(col){
+    return col.reduce(function(h, cv, k){ return h + cv.height + (k ? GAP : 0); }, 0);
+  });
+  var HEAD = 130, FOOT = 120;
+  var W = M*2 + cols.length*SHOT_W + (cols.length-1)*GAP;
+  var H = M + HEAD + Math.max.apply(null, colH) + FOOT;
+  var c = document.createElement('canvas'); c.width = W; c.height = H;
+  var g = c.getContext('2d');
+  g.fillStyle = '#e0f2fe'; g.fillRect(0, 0, W, H);
+  g.textBaseline = 'alphabetic';
+  var now = new Date();
+  var today = now.getFullYear()+'-'+('0'+(now.getMonth()+1)).slice(-2)+'-'+('0'+now.getDate()).slice(-2);
+  // shared header
+  g.fillStyle = '#0c4a6e'; g.font = '800 60px '+F;
+  g.fillText(LANG==='zh' ? '厄尔尼诺 / 拉尼娜监测' : 'ENSO Monitor', M, M + 66);
+  g.font = '600 40px '+F; g.textAlign = 'right';
+  g.fillText((LANG==='zh' ? '气候信号快报 · ' : 'Climate signals · ') + today, W - M, M + 62);
+  g.textAlign = 'left';
+  // sections, each on a white rounded card
+  cols.forEach(function(col, ci){
+    var x = M + ci*(SHOT_W + GAP), y = M + HEAD;
+    col.forEach(function(cv, k){
+      if (k) y += GAP;
+      g.save(); g.beginPath();
+      if (g.roundRect) g.roundRect(x, y, SHOT_W, cv.height, 24); else g.rect(x, y, SHOT_W, cv.height);
+      g.clip(); g.drawImage(cv, x, y); g.restore();
+      y += cv.height;
+    });
+  });
+  // shared footer: the link and when this picture was made, once
+  var fy = H - FOOT + 70;
+  g.fillStyle = '#0e7490'; g.font = '700 44px '+F; g.fillText(SHOT_URL, M, fy);
+  g.fillStyle = '#334155'; g.font = '500 36px '+F; g.textAlign = 'right';
+  g.fillText(tr('shotMade')+' '+today, W - M, fy); g.textAlign = 'left';
+  return c;
 }
 
 function shotBadge(g, x, y, text, bg, fg, F){
@@ -3647,31 +3685,32 @@ function shareImages(){
   }
   var d = new Date(), stamp = d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2)+'-'+('0'+d.getDate()).slice(-2);
 
-  // One after another (not in parallel) so each image is drawn with its number.
+  // Sections drawn one after another so each knows its number, then stacked
+  // into a single picture.
   var total = jobs.length;
   function one(j, idx){
     SHOT_SEQ = { i: idx + 1, n: total };
-    return j.make().then(shotBlob).catch(function(){
-      // A diagram that tainted the canvas: redraw that image without it.
-      var redo = j.key==='2-iod' ? shotIod(s, null) : j.key==='3-mjo' ? shotMjo(s, null) : shotNino(s);
-      return shotBlob(redo);
-    }).then(function(b){
-      var name = 'enso-'+stamp+'-'+j.key+'.png';
-      var file = (typeof File === 'function') ? new File([b], name, { type:'image/png' }) : b;
-      if (!file.name) file.name = name;
-      return { file:file, url: URL.createObjectURL(b) };
+    return j.make().then(function(cv){
+      return shotBlob(cv).then(function(){ return cv; });   // probe for a tainted canvas
+    }).catch(function(){
+      // A diagram that tainted the canvas: redraw that section without it.
+      return j.key==='2-iod' ? shotIod(s, null) : j.key==='3-mjo' ? shotMjo(s, null) : shotNino(s);
     });
   }
   jobs.reduce(function(prev, j, idx){
-    return prev.then(function(acc){ return one(j, idx).then(function(r){ acc.push(r); return acc; }); });
-  }, Promise.resolve([])).then(function(list){
-    SHOTS = list;
-    var files = list.map(function(x){ return x.file; });
-    var canShare = !!(navigator.share && navigator.canShare && navigator.canShare({ files: files }));
+    return prev.then(function(acc){ return one(j, idx).then(function(cv){ acc.push(cv); return acc; }); });
+  }, Promise.resolve([])).then(function(parts){
+    return shotBlob(shotCombine(parts));
+  }).then(function(b){
+    var name = 'enso-'+stamp+'.png';
+    var file = (typeof File === 'function') ? new File([b], name, { type:'image/png' }) : b;
+    if (!file.name) file.name = name;
+    SHOTS = [{ file:file, url: URL.createObjectURL(b) }];
+    var canShare = !!(navigator.share && navigator.canShare && navigator.canShare({ files: [file] }));
     shotSheet(
-      '<div class="shot-grid">'+list.map(function(x){ return '<img src="'+x.url+'" alt="">'; }).join('')+'</div>'
+      '<div class="shot-one"><img src="'+SHOTS[0].url+'" alt=""></div>'
       +skipHtml
-      +'<div class="shot-msg">'+tr(canShare ? 'shotReady' : 'shotReadyNoShare').replace('{n}', list.length)+'</div>'
+      +'<div class="shot-msg">'+tr(canShare ? 'shotReady' : 'shotReadyNoShare')+'</div>'
       +'<div class="share-actions">'
         +'<button class="btn ghost" onclick="shareCancel()">'+tr('shareCancel')+'</button>'
         +'<button class="btn ghost" onclick="shotSave()">'+tr('shotSave')+'</button>'
