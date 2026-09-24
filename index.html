@@ -1793,7 +1793,7 @@ var T = {
   shotMaking: {zh:'正在生成图片…', en:'Making the images…'},
   shotShare:  {zh:'分享', en:'Share'},
   shotSave:   {zh:'保存到手机', en:'Save'},
-  shotReady:  {zh:'图片已准备好（地图、IOD、MJO 合成一张，顺序固定）。点「分享」发给朋友或群组。', en:'Image ready (map, IOD and MJO in one picture, always in order). Tap Share to send it.'},
+  shotReady:  {zh:'图片已准备好（地图、IOD、MJO 与今日摘要合成一张，顺序固定）。点「分享」发给朋友或群组。', en:'Image ready (map, IOD, MJO and today\u2019s summary in one picture, always in order). Tap Share to send it.'},
   shotReadyNoShare:{zh:'图片已准备好。这个浏览器不支持直接分享图片，请点「保存到手机」再从相册发送。', en:'Image ready. This browser cannot share images directly — tap Save, then send it from your gallery.'},
   shotSkipped:{zh:'已略过（数据过期，不分享旧数字）：{l}', en:'Left out (data out of date — old numbers are not shared): {l}'},
   shotNone:   {zh:'三项数据目前都已过期，暂时没有可分享的图片。请先点「刷新数据」。', en:'All three readings are out of date, so there is nothing to share. Tap Refresh first.'},
@@ -3149,6 +3149,7 @@ function render(roni, weekly, cachedAt, iod, mjo, mon, out){
     : plainVerdict(phase, wkStale ? phase : phaseOf(wkLatest.nino34), shortTermLean(mjo, mon));
   HELP_STATE.verdictText = roniStale ? '' : verdict.text; // share omits a stale verdict
   HELP_STATE.verdictSub  = roniStale ? '' : (verdict.sub || '');
+  HELP_STATE.verdictCls  = verdict.cls;
   var stNow = shortTermLean(mjo, mon);
 
   // spark: last 24 seasons
@@ -3322,7 +3323,7 @@ function buildShareText(){
   if (s.roniStale) L.push('ENSO: '+tr('ensoStaleShort'));
   else L.push('ENSO: '+phLbl+' (RONI '+s.roniLbl+' · '+fmt(s.roni)+')');
   if (!s.wkStale && typeof s.wk==='number')
-    L.push((zh?'每周 Niño3.4: ':'Weekly Niño3.4: ')+fmt1(s.wk)+' ('+s.wkDate+')');
+    L.push((zh?'每周 Niño3.4: ':'Weekly Niño3.4: ')+fmt1(s.wk)+' ('+(shotDate(weekTs(s.wkDate)) || s.wkDate)+')');
   // IOD (only when good + fresh, same rule as the card)
   if (s.iod && s.iod.ok && typeof s.iod.value==='number'){
     var ip = iodPhaseOf(s.iod.value);
@@ -3476,7 +3477,7 @@ function shotDraw(o){
   shotWrap(g, o.title, W - (tx - x)).forEach(function(l, k){ g.fillText(l, tx, y + 64 + k*62); y += 62; });
   y += 30;
   y = o.body(g, x, y, W, F);
-  y += 30; g.fillStyle = '#cbd5e1'; g.fillRect(x, y, W, 2); y += 50;
+  if (o.foot.length){ y += 30; g.fillStyle = '#cbd5e1'; g.fillRect(x, y, W, 2); y += 50; }
   g.fillStyle = '#0f172a'; g.font = '500 34px '+F;
   o.foot.forEach(function(line){
     if (LANG !== 'zh') line = line.replace('\uff1a', ': ');   // full-width colon is Chinese-only
@@ -3488,14 +3489,73 @@ function shotDraw(o){
   return out;
 }
 
+// The WhatsApp text message, drawn as a section: the same lines, so the
+// picture and the text can never say different things. Readings become
+// label/value rows; the 👉 advice line and its follow-up become a coloured box.
+function shotSummary(){
+  var lines = buildShareText().split('\n').slice(1);          // line 1 = header, already on the picture
+  var rows = [], adv = [], s = HELP_STATE || {};
+  lines.forEach(function(l){
+    if (/^\s*👉/.test(l)) adv.push(l.replace(/^\s*👉\s*/, ''));
+    else if (/^\s{2,}\S/.test(l)) adv.push(l.trim());
+    else if (l.trim()){
+      var m = l.match(/^([^:：]+)[:：]\s*(.*)$/);
+      rows.push(m ? [m[1].trim(), m[2].trim()] : ['', l.trim()]);
+    }
+  });
+  var col = s.verdictCls === 'verdict-warm' ? ['#fef7ed','#9a3412','#fed7aa']
+          : s.verdictCls === 'verdict-cool' ? ['#eff6ff','#1d4ed8','#bfdbfe']
+          :                                   ['#f1f5f9','#334155','#e2e8f0'];
+  var keep = SHOT_SEQ; SHOT_SEQ = { i: 0, n: 1 };               // no section number
+  var cv = shotDraw({
+    title: LANG==='zh' ? '今日摘要' : 'Summary',
+    body: function(g, x, y, W, F){
+      var kw = LANG==='zh' ? 230 : 290;
+      rows.forEach(function(r){
+        g.fillStyle = '#334155'; g.font = '600 34px '+F;
+        g.fillText(r[0], x, y + 42);
+        g.fillStyle = '#0f172a'; g.font = '600 34px '+F;
+        var ls = shotWrap(g, r[1], W - kw);
+        ls.forEach(function(l, k){ g.fillText(l, x + kw, y + 42 + k*46); });
+        y += 46*ls.length + 14;
+      });
+      if (adv.length){
+        // measure, then draw the box behind the text
+        g.font = '700 38px '+F; var head = shotWrap(g, adv[0], W - 56);
+        g.font = '500 34px '+F; var rest = adv.slice(1).reduce(function(a, t){ return a.concat(shotWrap(g, t, W - 56)); }, []);
+        var h = 36 + head.length*52 + (rest.length ? 16 + rest.length*48 : 0) + 24;
+        y += 18;
+        g.fillStyle = col[0]; g.strokeStyle = col[2]; g.lineWidth = 3; g.beginPath();
+        if (g.roundRect) g.roundRect(x, y, W, h, 18); else g.rect(x, y, W, h);
+        g.fill(); g.stroke();
+        var ty = y + 18;
+        g.fillStyle = col[1]; g.font = '700 38px '+F;
+        head.forEach(function(l){ ty += 52; g.fillText(l, x + 28, ty - 12); });
+        if (rest.length){ ty += 16; g.font = '500 34px '+F; g.fillStyle = '#0f172a';
+          rest.forEach(function(l){ ty += 48; g.fillText(l, x + 28, ty - 12); }); }
+        y += h;
+      }
+      return y;
+    },
+    foot: []
+  });
+  SHOT_SEQ = keep;
+  return cv;
+}
+
 // Stack the sections into ONE picture, so WhatsApp cannot reorder them.
 // Two columns, not one tall strip: WhatsApp shrinks a photo to fit its longest
 // side, and a 3,900px-tall strip would come out with unreadably small text.
 // Column 1 holds sections 1-2, column 2 holds section 3; with fewer sections
 // each gets its own column.
-function shotCombine(parts){
+function shotCombine(parts, extra){
   var F = shotFont(), GAP = 28, M = 36;
   var cols = parts.length === 3 ? [[parts[0], parts[1]], [parts[2]]] : parts.map(function(p){ return [p]; });
+  if (extra){
+    // Fill the empty space: add it under whichever column is shorter.
+    var hs = cols.map(function(col){ return col.reduce(function(h, cv){ return h + cv.height; }, 0); });
+    cols[hs.indexOf(Math.min.apply(null, hs))].push(extra);
+  }
   var colH = cols.map(function(col){
     return col.reduce(function(h, cv, k){ return h + cv.height + (k ? GAP : 0); }, 0);
   });
@@ -3700,7 +3760,7 @@ function shareImages(){
   jobs.reduce(function(prev, j, idx){
     return prev.then(function(acc){ return one(j, idx).then(function(cv){ acc.push(cv); return acc; }); });
   }, Promise.resolve([])).then(function(parts){
-    return shotBlob(shotCombine(parts));
+    return shotBlob(shotCombine(parts, shotSummary()));
   }).then(function(b){
     var name = 'enso-'+stamp+'.png';
     var file = (typeof File === 'function') ? new File([b], name, { type:'image/png' }) : b;
