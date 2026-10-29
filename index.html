@@ -1543,11 +1543,19 @@ var PROXY = (typeof window!=='undefined' && window.ENSO_PROXY)
 var THRESH = 0.5; // ±0.5 deg C ONI/RONI El Nino / La Nina threshold
 
 /* ===================== I18N ===================== */
-// Language cycle. Add 'ms' (BM) or 'ta' (Tamil) here later and the toggle
-// keeps working — one tap advances to the next, label shows current language.
-var LANG_CYCLE = ['zh','en'];
-var LANG_LBL   = { zh:'中', en:'EN' };
+// Language cycle: Chinese → English → Bahasa Melayu. Add 'ta' (Tamil) here
+// later and the toggle keeps working — one tap advances to the next, label
+// shows current language. A string missing a language falls back to English.
+var LANG_CYCLE = ['zh','en','ms'];
+var LANG_LBL   = { zh:'中', en:'EN', ms:'BM' };
 var LANG = localStorage.getItem('enso-lang') || 'zh';
+if (LANG_CYCLE.indexOf(LANG) < 0) LANG = 'zh';
+// Month abbreviations for the non-Chinese languages (index 1-12).
+var MON_NAMES = {
+  en: ['','Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'],
+  ms: ['','Jan','Feb','Mac','Apr','Mei','Jun','Jul','Ogo','Sep','Okt','Nov','Dis']
+};
+function monAbbr(m){ return (MON_NAMES[LANG] || MON_NAMES.en)[m] || ('M'+m); }
 var HELP_STATE = null; // live values for the info-guide overlay, set in render()
 
 // ONE table of maximum ages. A fetch that SUCCEEDS but returns data older than
@@ -1594,367 +1602,455 @@ function withTimeout(p, ms, fallback){
 }
 var LAST_LOAD = 0;
 var T = {
-  title:      {zh:'厄尔尼诺/拉尼娜监测', en:'ENSO Monitor'},
-  sub:        {zh:'RONI 指数 · 厄尔尼诺与拉尼娜', en:'RONI index · El Niño & La Niña'},
-  loading:    {zh:'正在载入 NOAA 数据…', en:'Loading NOAA data…'},
-  curStatus:  {zh:'当前状态', en:'Current status'},
-  anomUnit:   {zh:'°C 距平', en:'°C anomaly'},
-  roniTitle:  {zh:'RONI · 官方指数（季）', en:'RONI · official index (seasonal)'},
-  weeklyTitle:{zh:'每周 Niño 3.4 海温距平', en:'Weekly Niño 3.4 SST anomaly'},
-  trendTitle: {zh:'近 24 季趋势', en:'Last 24 seasons trend'},
-  iodTitle:   {zh:'印度洋偶极 (IOD)', en:'Indian Ocean Dipole (IOD)'},
+  title:      {zh:'厄尔尼诺/拉尼娜监测', en:'ENSO Monitor', ms:'Pemantau ENSO'},
+  sub:        {zh:'RONI 指数 · 厄尔尼诺与拉尼娜', en:'RONI index · El Niño & La Niña', ms:'Indeks RONI · El Niño & La Niña'},
+  loading:    {zh:'正在载入 NOAA 数据…', en:'Loading NOAA data…', ms:'Memuatkan data NOAA…'},
+  curStatus:  {zh:'当前状态', en:'Current status', ms:'Status semasa'},
+  anomUnit:   {zh:'°C 距平', en:'°C anomaly', ms:'°C anomali'},
+  roniTitle:  {zh:'RONI · 官方指数（季）', en:'RONI · official index (seasonal)', ms:'RONI · indeks rasmi (bermusim)'},
+  weeklyTitle:{zh:'每周 Niño 3.4 海温距平', en:'Weekly Niño 3.4 SST anomaly', ms:'Anomali SST Niño 3.4 mingguan'},
+  trendTitle: {zh:'近 24 季趋势', en:'Last 24 seasons trend', ms:'Trend 24 musim terakhir'},
+  iodTitle:   {zh:'印度洋偶极 (IOD)', en:'Indian Ocean Dipole (IOD)', ms:'Dipol Lautan Hindi (IOD)'},
   iodHint:    {zh:'IOD = 印度洋东西两侧的海温差。对马来西亚的雨量影响很直接，尤其是东侧（靠近苏门答腊）。数值由本软件取 NOAA OISST 海温距平自行计算，每周更新。',
-               en:'IOD = the east–west sea-temperature gradient across the Indian Ocean. It directly affects Malaysian rainfall, especially the eastern side (near Sumatra). Computed here from NOAA OISST anomalies, updated weekly.'},
-  iodLatest:  {zh:'最新值 (IOD)', en:'Latest (IOD)'},
-  iodSrc:     {zh:'数据来源', en:'Source'},
+               en:'IOD = the east–west sea-temperature gradient across the Indian Ocean. It directly affects Malaysian rainfall, especially the eastern side (near Sumatra). Computed here from NOAA OISST anomalies, updated weekly.',
+               ms:'IOD = perbezaan suhu laut antara barat dan timur Lautan Hindi. Ia memberi kesan langsung kepada hujan di Malaysia, terutamanya bahagian timur (berhampiran Sumatera). Dikira di sini daripada anomali NOAA OISST, dikemas kini setiap minggu.'},
+  iodLatest:  {zh:'最新值 (IOD)', en:'Latest (IOD)', ms:'Terkini (IOD)'},
+  iodSrc:     {zh:'数据来源', en:'Source', ms:'Sumber'},
   iodComputedNote:{zh:'ℹ️ 澳洲气象局（BOM）目前拒绝我们的自动抓取，所以这个 IOD 数值是我们自己算的：取 NOAA OISST 海温距平，西印度洋（50–70°E, 10°S–10°N）平均减去东南印度洋（90–110°E, 10°S–赤道）平均，即标准 DMI 定义。每周更新。与 BOM 公布的数字可能略有出入 —— 看正负与趋势，不要当作 BOM 的官方值。',
-                   en:'ℹ️ Australia’s BOM currently refuses our automated requests, so this IOD value is computed here: mean NOAA OISST anomaly over the west box (50–70°E, 10°S–10°N) minus the south-east box (90–110°E, 10°S–equator) — the standard DMI definition. Updated weekly. It may differ slightly from BOM’s published figure, so read the sign and the trend, not the exact number.'},
+                   en:'ℹ️ Australia’s BOM currently refuses our automated requests, so this IOD value is computed here: mean NOAA OISST anomaly over the west box (50–70°E, 10°S–10°N) minus the south-east box (90–110°E, 10°S–equator) — the standard DMI definition. Updated weekly. It may differ slightly from BOM’s published figure, so read the sign and the trend, not the exact number.',
+                   ms:'ℹ️ BOM Australia kini menolak permintaan automatik kami, jadi nilai IOD ini dikira di sini: purata anomali NOAA OISST di kotak barat (50–70°T, 10°S–10°U) tolak kotak tenggara (90–110°T, 10°S–khatulistiwa) — definisi DMI piawai. Dikemas kini setiap minggu. Ia mungkin sedikit berbeza daripada angka rasmi BOM, jadi lihat tanda (+/−) dan trendnya, bukan angka tepatnya.'},
   iodMonthlyNote:{zh:'ℹ️ 本周的海温格点数据暂时取不到，所以这里显示的是备用的【月度】DMI（NOAA PSL，HadISST），月份：{m}。月度值本来就会落后一到两个月，适合看季节方向，不适合当作「本周」的依据。',
-                  en:'ℹ️ This week’s gridded SST was unavailable, so this is the fallback MONTHLY DMI (NOAA PSL, HadISST) for {m}. A monthly value naturally runs one to two months behind — useful for the seasonal direction, not as a reading for this week.'},
+                  en:'ℹ️ This week’s gridded SST was unavailable, so this is the fallback MONTHLY DMI (NOAA PSL, HadISST) for {m}. A monthly value naturally runs one to two months behind — useful for the seasonal direction, not as a reading for this week.',
+                  ms:'ℹ️ Data grid SST minggu ini tidak dapat diperoleh, jadi ini ialah DMI BULANAN sandaran (NOAA PSL, HadISST) bagi {m}. Nilai bulanan memang ketinggalan satu hingga dua bulan — berguna untuk arah musim, bukan sebagai bacaan minggu ini.'},
   iodAgedMon: {zh:'⚠️ 月度 DMI 的最新月份为 {m}，已超过月度源的正常延迟。数值仍列出供参考，但不据此给出农事建议。',
-               en:'⚠️ The newest monthly DMI is {m}, which is beyond even the normal lag for a monthly source. The value is shown for reference only — no farm advice is drawn from it.'},
+               en:'⚠️ The newest monthly DMI is {m}, which is beyond even the normal lag for a monthly source. The value is shown for reference only — no farm advice is drawn from it.',
+               ms:'⚠️ DMI bulanan terbaharu ialah {m}, melebihi kelewatan biasa bagi sumber bulanan. Nilai ditunjukkan sebagai rujukan sahaja — tiada nasihat ladang dibuat daripadanya.'},
   iodFail:    {zh:'IOD 数值暂时无法取得（海温格点数据未能拉取）。为避免误导，这里不显示过期或猜测的数值。厄尔尼诺数据照常运作。详情见上方 ⓘ 说明。',
-               en:'IOD value temporarily unavailable (the gridded SST fetch did not return). To avoid misleading you, no stale or guessed value is shown. The El Niño data is unaffected. See the ⓘ guide for details.'},
-  iodPrev:    {zh:'上一月', en:'Previous month'},
-  iodTrend:   {zh:'近三月走向', en:'3-month trend'},
-  iodPos:     {zh:'正 IOD', en:'Positive IOD'},
-  iodNeg:     {zh:'负 IOD', en:'Negative IOD'},
-  iodNeu:     {zh:'IOD 中性', en:'IOD-neutral'},
-  iodPosCond: {zh:'正 IOD 状态', en:'Positive IOD'},
-  iodNegCond: {zh:'负 IOD 状态', en:'Negative IOD'},
-  iodNeuCond: {zh:'IOD 中性', en:'IOD-neutral'},
+               en:'IOD value temporarily unavailable (the gridded SST fetch did not return). To avoid misleading you, no stale or guessed value is shown. The El Niño data is unaffected. See the ⓘ guide for details.',
+               ms:'Nilai IOD tidak dapat diperoleh buat sementara (data grid SST tidak berjaya diambil). Untuk mengelak salah faham, tiada nilai lama atau tekaan ditunjukkan. Data El Niño tidak terjejas. Lihat panduan ⓘ untuk butiran.'},
+  iodPrev:    {zh:'上一月', en:'Previous month', ms:'Bulan lepas'},
+  iodTrend:   {zh:'近三月走向', en:'3-month trend', ms:'Trend 3 bulan'},
+  iodPos:     {zh:'正 IOD', en:'Positive IOD', ms:'IOD positif'},
+  iodNeg:     {zh:'负 IOD', en:'Negative IOD', ms:'IOD negatif'},
+  iodNeu:     {zh:'IOD 中性', en:'IOD-neutral', ms:'IOD neutral'},
+  iodPosCond: {zh:'正 IOD 状态', en:'Positive IOD', ms:'IOD positif'},
+  iodNegCond: {zh:'负 IOD 状态', en:'Negative IOD', ms:'IOD negatif'},
+  iodNeuCond: {zh:'IOD 中性', en:'IOD-neutral', ms:'IOD neutral'},
   iodFarmPos: {zh:'正 IOD 通常让本区 偏少雨量、趋干。它常与厄尔尼诺同时出现、方向一致；两者同时偏干时旱情更重。但 IOD 也可能单独出现，所以即使 ENSO 中性也要留意：注意灌溉与火患。',
-               en:'Positive IOD usually brings drier-than-normal rainfall to our region. It often coincides with El Niño and points the same dry way; when both align, dry spells are sharper. But IOD can also act on its own, so watch it even when ENSO is neutral: mind irrigation and fire risk.'},
+               en:'Positive IOD usually brings drier-than-normal rainfall to our region. It often coincides with El Niño and points the same dry way; when both align, dry spells are sharper. But IOD can also act on its own, so watch it even when ENSO is neutral: mind irrigation and fire risk.',
+               ms:'IOD positif biasanya membawa hujan kurang daripada biasa ke kawasan kita. Ia sering berlaku serentak dengan El Niño dan menuju arah kering yang sama; apabila kedua-duanya sejajar, musim kering lebih teruk. Tetapi IOD juga boleh berlaku sendiri, jadi pantau walaupun ENSO neutral: jaga pengairan dan risiko kebakaran.'},
   iodFarmNeg: {zh:'负 IOD 通常让本区 偏多雨量、早上多雨。它常与拉尼娜同时出现、方向一致；两者同时偏湿时雨水更多。但 IOD 也可能单独出现，所以即使 ENSO 中性也要留意：注意排水、根部病害，并安排好喷药与采收时段。',
-               en:'Negative IOD usually brings wetter-than-normal rainfall and more morning rain to our region. It often coincides with La Niña and points the same wet way; when both align, rain is heavier. But IOD can also act on its own, so watch it even when ENSO is neutral: mind drainage, root disease, and time your spraying and harvesting carefully.'},
+               en:'Negative IOD usually brings wetter-than-normal rainfall and more morning rain to our region. It often coincides with La Niña and points the same wet way; when both align, rain is heavier. But IOD can also act on its own, so watch it even when ENSO is neutral: mind drainage, root disease, and time your spraying and harvesting carefully.',
+               ms:'IOD negatif biasanya membawa hujan lebih daripada biasa dan lebih banyak hujan pagi ke kawasan kita. Ia sering berlaku serentak dengan La Niña dan menuju arah basah yang sama; apabila kedua-duanya sejajar, hujan lebih lebat. Tetapi IOD juga boleh berlaku sendiri, jadi pantau walaupun ENSO neutral: jaga saliran, penyakit akar, dan atur masa meracun serta menuai dengan teliti.'},
   iodFarmNeu: {zh:'IOD 中性 — 印度洋方向对雨量没有明显偏移，按常规管理即可，主要看上方 ENSO 与短期天气预报。',
-               en:'IOD-neutral — the Indian Ocean adds no strong rainfall tilt; manage as usual and rely mainly on ENSO above and short-range forecasts.'},
+               en:'IOD-neutral — the Indian Ocean adds no strong rainfall tilt; manage as usual and rely mainly on ENSO above and short-range forecasts.',
+               ms:'IOD neutral — Lautan Hindi tidak memberi kecenderungan hujan yang ketara; urus seperti biasa dan bergantung terutamanya pada ENSO di atas dan ramalan cuaca jangka pendek.'},
   // ---- MJO (Madden–Julian Oscillation) ----
-  mjoTitle:   {zh:'季内振荡 (MJO)', en:'Madden–Julian Oscillation (MJO)'},
+  mjoTitle:   {zh:'季内振荡 (MJO)', en:'Madden–Julian Oscillation (MJO)', ms:'Ayunan Madden–Julian (MJO)'},
   mjoHint:    {zh:'MJO = 一团增强降雨，每 30–60 天自西向东绕赤道移动。它落在我们头顶（第 3–5 位相）时，未来 1–2 周通常更湿、雷雨更多；走到对面时则偏干。比 ENSO／IOD 更短期，填补「未来一两周」的空档。数据：NOAA ROMI 指数，每日更新。',
-               en:'MJO = a pulse of enhanced rain that travels east around the equator every 30–60 days. When it sits over us (phases 3–5), the next 1–2 weeks tend to be wetter with more thunderstorms; on the opposite side it tilts drier. Shorter-term than ENSO/IOD — it fills the "next week or two" gap. Data: NOAA ROMI index, daily.'},
-  mjoPhaseLbl:{zh:'位相', en:'Phase'},
-  mjoAmpLbl:  {zh:'振幅', en:'Amplitude'},
-  mjoRegionLbl:{zh:'活跃位置', en:'Active over'},
-  mjoUnit:    {zh:'位相 1–8 · 振幅（>1 才算活跃）', en:'phase 1–8 · amplitude (>1 = active)'},
+               en:'MJO = a pulse of enhanced rain that travels east around the equator every 30–60 days. When it sits over us (phases 3–5), the next 1–2 weeks tend to be wetter with more thunderstorms; on the opposite side it tilts drier. Shorter-term than ENSO/IOD — it fills the "next week or two" gap. Data: NOAA ROMI index, daily.',
+               ms:'MJO = gelombang hujan kuat yang bergerak ke timur mengelilingi khatulistiwa setiap 30–60 hari. Apabila ia berada di atas kita (fasa 3–5), 1–2 minggu akan datang cenderung lebih basah dengan lebih banyak ribut petir; apabila di sebelah bertentangan, cenderung lebih kering. Lebih jangka pendek daripada ENSO/IOD — ia mengisi jurang "seminggu dua akan datang". Data: indeks ROMI NOAA, harian.'},
+  mjoPhaseLbl:{zh:'位相', en:'Phase', ms:'Fasa'},
+  mjoAmpLbl:  {zh:'振幅', en:'Amplitude', ms:'Amplitud'},
+  mjoRegionLbl:{zh:'活跃位置', en:'Active over', ms:'Aktif di atas'},
+  mjoUnit:    {zh:'位相 1–8 · 振幅（>1 才算活跃）', en:'phase 1–8 · amplitude (>1 = active)', ms:'fasa 1–8 · amplitud (>1 = aktif)'},
   // amplitude states
-  mjoWeakBadge:{zh:'MJO 弱／不活跃', en:'MJO weak / inactive'},
-  mjoActiveBadge:{zh:'MJO 活跃', en:'MJO active'},
+  mjoWeakBadge:{zh:'MJO 弱／不活跃', en:'MJO weak / inactive', ms:'MJO lemah / tidak aktif'},
+  mjoActiveBadge:{zh:'MJO 活跃', en:'MJO active', ms:'MJO aktif'},
   mjoWeakNote:{zh:'目前 MJO 振幅 < 1，信号弱、不连贯——这段时间它对本区雨量没有清楚的推动。可暂时忽略，主要看 ENSO 与短期天气预报。',
-               en:'MJO amplitude is currently < 1, so the signal is weak and incoherent — it gives no clear push to our rainfall right now. Safe to set aside for now; rely on ENSO and short-range forecasts.'},
+               en:'MJO amplitude is currently < 1, so the signal is weak and incoherent — it gives no clear push to our rainfall right now. Safe to set aside for now; rely on ENSO and short-range forecasts.',
+               ms:'Amplitud MJO kini < 1, jadi isyaratnya lemah dan tidak teratur — ia tidak memberi kesan jelas kepada hujan kita sekarang. Boleh diketepikan buat masa ini; bergantung pada ENSO dan ramalan cuaca jangka pendek.'},
   mjoStale:   {zh:'⚠️ MJO 数据似乎未更新（最新为 {d}，约 {n} 天前）。MJO 是每日数据，过期的数值无法反映当前状况，因此这里不显示位相判断或农事建议。可能是数据源暂时停更——ENSO 与 IOD 不受影响。',
-               en:'⚠️ The MJO data appears not to be updating (latest is {d}, about {n} days ago). MJO is daily data, so an out-of-date value can\'t reflect current conditions — no phase reading or farm advice is shown here. The source may have paused updates; ENSO and IOD are unaffected.'},
+               en:'⚠️ The MJO data appears not to be updating (latest is {d}, about {n} days ago). MJO is daily data, so an out-of-date value can\'t reflect current conditions — no phase reading or farm advice is shown here. The source may have paused updates; ENSO and IOD are unaffected.',
+               ms:'⚠️ Data MJO nampaknya tidak dikemas kini (terkini {d}, kira-kira {n} hari lalu). MJO ialah data harian, jadi nilai lama tidak menggambarkan keadaan semasa — tiada bacaan fasa atau nasihat ladang ditunjukkan. Sumber mungkin berhenti seketika; ENSO dan IOD tidak terjejas.'},
   // wet/dry/transition meaning (only shown when active)
-  mjoWet:     {zh:'本区趋湿', en:'wetter tilt for our region'},
-  mjoDry:     {zh:'本区趋干', en:'drier tilt for our region'},
-  mjoTrans:   {zh:'过渡位相', en:'transition phase'},
+  mjoWet:     {zh:'本区趋湿', en:'wetter tilt for our region', ms:'cenderung lebih basah bagi kawasan kita'},
+  mjoDry:     {zh:'本区趋干', en:'drier tilt for our region', ms:'cenderung lebih kering bagi kawasan kita'},
+  mjoTrans:   {zh:'过渡位相', en:'transition phase', ms:'fasa peralihan'},
   // region names by phase
-  mjoRegWHemAfr:{zh:'西半球／非洲', en:'W. Hemisphere / Africa'},
-  mjoRegIndian: {zh:'印度洋', en:'Indian Ocean'},
-  mjoRegMaritime:{zh:'海洋大陆（我们这里）', en:'Maritime Continent (incl. Malaysia)'},
-  mjoRegWPac:   {zh:'西太平洋', en:'Western Pacific'},
-  mjoRegPac:    {zh:'太平洋', en:'Pacific'},
+  mjoRegWHemAfr:{zh:'西半球／非洲', en:'W. Hemisphere / Africa', ms:'Hemisfera Barat / Afrika'},
+  mjoRegIndian: {zh:'印度洋', en:'Indian Ocean', ms:'Lautan Hindi'},
+  mjoRegMaritime:{zh:'海洋大陆（我们这里）', en:'Maritime Continent (incl. Malaysia)', ms:'Benua Maritim (termasuk Malaysia)'},
+  mjoRegWPac:   {zh:'西太平洋', en:'Western Pacific', ms:'Pasifik Barat'},
+  mjoRegPac:    {zh:'太平洋', en:'Pacific', ms:'Pasifik'},
   // Short side-labels for the wheel rim (the full names don't fit beside the ring).
-  mjoWhMarA:  {zh:'海洋大陆', en:'Maritime'},
-  mjoWhMarB:  {zh:'（我们这里）', en:'(us)'},
-  mjoWhHemA:  {zh:'西半球', en:'W. Hem.'},
-  mjoWhHemB:  {zh:'／非洲', en:'/ Africa'},
+  mjoWhMarA:  {zh:'海洋大陆', en:'Maritime', ms:'Maritim'},
+  mjoWhMarB:  {zh:'（我们这里）', en:'(us)', ms:'(kita)'},
+  mjoWhHemA:  {zh:'西半球', en:'W. Hem.', ms:'Hem. Barat'},
+  mjoWhHemB:  {zh:'／非洲', en:'/ Africa', ms:'/ Afrika'},
   // Phase→region key printed under the wheel. Geometry alone is easy to misread,
   // so the mapping is also stated in words.
   mjoWhKey1:  {zh:'位相 4–5 海洋大陆（我们这里）· 6–7 西太平洋',
-               en:'Phases 4–5 Maritime Continent (us) · 6–7 W Pacific'},
+               en:'Phases 4–5 Maritime Continent (us) · 6–7 W Pacific',
+               ms:'Fasa 4–5 Benua Maritim (kita) · 6–7 Pasifik Barat'},
   mjoWhKey2:  {zh:'8–1 西半球／非洲 · 2–3 印度洋',
-               en:'8–1 W Hem / Africa · 2–3 Indian Ocean'},
+               en:'8–1 W Hem / Africa · 2–3 Indian Ocean',
+               ms:'8–1 Hem. Barat / Afrika · 2–3 Lautan Hindi'},
   // farm advice
   mjoFarmWet: {zh:'MJO 正经过本区（第 {p} 位相）——未来约 1–2 周降雨与雷雨偏多。安排好喷药与采收时段，注意排水与园区通行。',
-               en:'MJO is passing over us (phase {p}) — expect more rain and thunderstorms over the next 1–2 weeks. Time spraying and harvesting around it; mind drainage and access.'},
+               en:'MJO is passing over us (phase {p}) — expect more rain and thunderstorms over the next 1–2 weeks. Time spraying and harvesting around it; mind drainage and access.',
+               ms:'MJO sedang melalui kawasan kita (fasa {p}) — jangkakan lebih banyak hujan dan ribut petir dalam 1–2 minggu akan datang. Atur masa meracun dan menuai; jaga saliran dan laluan ladang.'},
   mjoFarmDry: {zh:'MJO 走到对侧（第 {p} 位相）——未来约 1–2 周偏干、雨水受抑制。利于喷药与采收，但注意灌溉与火患。',
-               en:'MJO is on the opposite side (phase {p}) — the next 1–2 weeks tilt drier with suppressed rain. Good for spraying and harvesting, but watch irrigation and fire risk.'},
+               en:'MJO is on the opposite side (phase {p}) — the next 1–2 weeks tilt drier with suppressed rain. Good for spraying and harvesting, but watch irrigation and fire risk.',
+               ms:'MJO berada di sebelah bertentangan (fasa {p}) — 1–2 minggu akan datang cenderung lebih kering dengan hujan berkurangan. Sesuai untuk meracun dan menuai, tetapi pantau pengairan dan risiko kebakaran.'},
   mjoFarmTrans:{zh:'MJO 处于过渡位相（第 {p} 位相）——对本区雨量没有明显推动，留意它接下来是否东移过境。',
-               en:'MJO is in a transition phase (phase {p}) — no strong push on our rainfall; watch whether it moves over us next.'},
+               en:'MJO is in a transition phase (phase {p}) — no strong push on our rainfall; watch whether it moves over us next.',
+               ms:'MJO dalam fasa peralihan (fasa {p}) — tiada kesan kuat kepada hujan kita; perhatikan sama ada ia bergerak ke atas kita selepas ini.'},
   mjoFarmWeak:{zh:'MJO 目前弱／不活跃，对本区雨量没有清楚推动。',
-               en:'MJO is currently weak/inactive — no clear push on our rainfall.'},
+               en:'MJO is currently weak/inactive — no clear push on our rainfall.',
+               ms:'MJO kini lemah/tidak aktif — tiada kesan jelas kepada hujan kita.'},
   // help guide
   helpMjo:    {zh:'🌀 季内振荡 (MJO)：一团增强降雨（雷雨云团），每 30–60 天自西向东绕赤道移动一圈，分成 8 个「位相」表示它此刻在地球哪个位置。第 3–5 位相 = 落在海洋大陆（含马来西亚）头顶 → 本区未来 1–2 周偏湿、雷雨多；第 7–8–1 位相 = 走到对面 → 本区偏干；第 2、6 位相为过渡。只有当「振幅 > 1」时 MJO 才算活跃、值得参考；< 1 时信号弱可忽略。MJO 比 ENSO／IOD 短得多——ENSO／IOD 看「这个季节」，MJO 看「未来一两周」，最贴近喷药、采收、农活的安排。注意：精确的位相—降雨对应会随季节略有移动，所以这是趋势参考，不是精确预报。',
-               en:'🌀 Madden–Julian Oscillation (MJO): a pulse of enhanced rain (thunderstorm clusters) that circles the equator eastward every 30–60 days. Its lifecycle is split into 8 "phases" showing where it sits right now. Phases 3–5 = over the Maritime Continent (including Malaysia) → wetter here, more thunderstorms for the next 1–2 weeks; phases 7–8–1 = opposite side → drier here; phases 2 & 6 are transitions. The MJO only counts as active when amplitude > 1; below that the signal is weak and can be ignored. MJO is much shorter-term than ENSO/IOD — ENSO/IOD describe "this season," MJO describes "the next week or two," which is closest to spraying, harvesting, and fieldwork timing. Note: the exact phase-to-rainfall mapping shifts a little by season, so treat this as a tendency, not an exact forecast.'},
-  mjoOutlookLabel:{zh:'NOAA MJO 监测页面', en:'NOAA MJO monitoring page'},
+               en:'🌀 Madden–Julian Oscillation (MJO): a pulse of enhanced rain (thunderstorm clusters) that circles the equator eastward every 30–60 days. Its lifecycle is split into 8 "phases" showing where it sits right now. Phases 3–5 = over the Maritime Continent (including Malaysia) → wetter here, more thunderstorms for the next 1–2 weeks; phases 7–8–1 = opposite side → drier here; phases 2 & 6 are transitions. The MJO only counts as active when amplitude > 1; below that the signal is weak and can be ignored. MJO is much shorter-term than ENSO/IOD — ENSO/IOD describe "this season," MJO describes "the next week or two," which is closest to spraying, harvesting, and fieldwork timing. Note: the exact phase-to-rainfall mapping shifts a little by season, so treat this as a tendency, not an exact forecast.',
+               ms:'🌀 Ayunan Madden–Julian (MJO): gelombang hujan kuat (kelompok ribut petir) yang mengelilingi khatulistiwa ke arah timur setiap 30–60 hari. Kitarannya dibahagikan kepada 8 "fasa" yang menunjukkan kedudukannya sekarang. Fasa 3–5 = di atas Benua Maritim (termasuk Malaysia) → lebih basah di sini, lebih banyak ribut petir dalam 1–2 minggu akan datang; fasa 7–8–1 = sebelah bertentangan → lebih kering di sini; fasa 2 & 6 ialah peralihan. MJO hanya dikira aktif apabila amplitud > 1; di bawah itu isyaratnya lemah dan boleh diabaikan. MJO jauh lebih jangka pendek daripada ENSO/IOD — ENSO/IOD menggambarkan "musim ini", MJO menggambarkan "seminggu dua akan datang", paling hampir dengan jadual meracun, menuai dan kerja ladang. Nota: hubungan fasa–hujan sebenar berubah sedikit mengikut musim, jadi anggap ini sebagai kecenderungan, bukan ramalan tepat.'},
+  mjoOutlookLabel:{zh:'NOAA MJO 监测页面', en:'NOAA MJO monitoring page', ms:'Halaman pemantauan MJO NOAA'},
   mjoOutlookTxt:{zh:'本软件的 MJO 数值取自 NOAA PSL 的 ROMI 实时指数（每日更新），并换算成标准 RMM 位相。BOM 与 NOAA 的官方页面都有更详细的相位图与未来传播预测。',
-                 en:'This app reads NOAA PSL\u2019s ROMI real-time index (updated daily) and converts it to the standard RMM phase. Both NOAA and BOM publish fuller phase diagrams and propagation forecasts.'},
-  mjoOutlookCheck:{zh:'查看 NOAA 最新 MJO ↗', en:'Check NOAA\u2019s latest MJO ↗'},
-  mjoNowLabel:{zh:'现在的情况（每日）：', en:'Right now (daily): '},
+                 en:'This app reads NOAA PSL\u2019s ROMI real-time index (updated daily) and converts it to the standard RMM phase. Both NOAA and BOM publish fuller phase diagrams and propagation forecasts.',
+                 ms:'Aplikasi ini membaca indeks masa nyata ROMI daripada NOAA PSL (dikemas kini setiap hari) dan menukarnya kepada fasa RMM piawai. NOAA dan BOM kedua-duanya menerbitkan rajah fasa dan ramalan pergerakan yang lebih lengkap.'},
+  mjoOutlookCheck:{zh:'查看 NOAA 最新 MJO ↗', en:'Check NOAA\u2019s latest MJO ↗', ms:'Lihat MJO terkini NOAA ↗'},
+  mjoNowLabel:{zh:'现在的情况（每日）：', en:'Right now (daily): ', ms:'Sekarang (harian): '},
   // ---- Monsoon (status + surge) ----
-  monTitle:   {zh:'季风状态 + 季风涌', en:'Monsoon status + surge'},
-  monShort:   {zh:'季风', en:'Monsoon'},
+  monTitle:   {zh:'季风状态 + 季风涌', en:'Monsoon status + surge', ms:'Status monsun + luruan'},
+  monShort:   {zh:'季风', en:'Monsoon', ms:'Monsun'},
   monHint:    {zh:'马来西亚两大季风：东北季风（11–3月，主雨季）与西南季风（5月底–9月，半岛偏干）。东北季风期间的「季风涌」（来自南海的强北风）会带来连续 1–3 天暴雨与水患。数据：Open-Meteo 925 hPa 风场。',
-               en:'Malaysia\u2019s two monsoons: Northeast (Nov–Mar, main rainy season) and Southwest (late May–Sep, drier for the Peninsula). During the NE monsoon, a "surge" (strong northerly wind from the South China Sea) brings 1–3 days of heavy rain and floods. Data: Open-Meteo 925-hPa winds.'},
-  monNE:      {zh:'东北季风', en:'Northeast Monsoon'},
-  monSW:      {zh:'西南季风', en:'Southwest Monsoon'},
-  monInter:   {zh:'季风过渡期', en:'Inter-monsoon'},
-  monStatusLbl:{zh:'当前季风', en:'Current monsoon'},
-  monMsiLbl:  {zh:'季风涌指数 (MSI)', en:'Surge index (MSI)'},
-  monSrc:     {zh:'数据来源', en:'Source'},
+               en:'Malaysia\u2019s two monsoons: Northeast (Nov–Mar, main rainy season) and Southwest (late May–Sep, drier for the Peninsula). During the NE monsoon, a "surge" (strong northerly wind from the South China Sea) brings 1–3 days of heavy rain and floods. Data: Open-Meteo 925-hPa winds.',
+               ms:'Dua monsun Malaysia: Timur Laut (Nov–Mac, musim hujan utama) dan Barat Daya (akhir Mei–Sep, lebih kering di Semenanjung). Semasa monsun Timur Laut, "luruan" (angin utara kuat dari Laut China Selatan) membawa hujan lebat 1–3 hari dan banjir. Data: angin 925 hPa Open-Meteo.'},
+  monNE:      {zh:'东北季风', en:'Northeast Monsoon', ms:'Monsun Timur Laut'},
+  monSW:      {zh:'西南季风', en:'Southwest Monsoon', ms:'Monsun Barat Daya'},
+  monInter:   {zh:'季风过渡期', en:'Inter-monsoon', ms:'Peralihan monsun'},
+  monStatusLbl:{zh:'当前季风', en:'Current monsoon', ms:'Monsun semasa'},
+  monMsiLbl:  {zh:'季风涌指数 (MSI)', en:'Surge index (MSI)', ms:'Indeks luruan (MSI)'},
+  monSrc:     {zh:'数据来源', en:'Source', ms:'Sumber'},
   monOfficial:{zh:'本数值为即时估算；正式暴雨／水患预警以 MetMalaysia 官方为准。',
-               en:'This is a live estimate; for official heavy-rain / flood warnings, follow MetMalaysia.'},
+               en:'This is a live estimate; for official heavy-rain / flood warnings, follow MetMalaysia.',
+               ms:'Ini anggaran masa nyata; untuk amaran rasmi hujan lebat / banjir, ikut MetMalaysia.'},
   monSurgeOn: {zh:'⚠️ 季风涌活跃（MSI {v}，已连续 ≥3 天 < −8 m/s）。未来 1–3 天可能持续强降雨，注意排水、防洪、暂缓园区作业。',
-               en:'⚠️ Monsoon surge active (MSI {v}, ≥3 days below −8 m/s). Expect continued heavy rain over 1–3 days — watch drainage, flooding, and hold off fieldwork.'},
+               en:'⚠️ Monsoon surge active (MSI {v}, ≥3 days below −8 m/s). Expect continued heavy rain over 1–3 days — watch drainage, flooding, and hold off fieldwork.',
+               ms:'⚠️ Luruan monsun aktif (MSI {v}, ≥3 hari di bawah −8 m/s). Jangkakan hujan lebat berterusan selama 1–3 hari — jaga saliran, banjir, dan tangguhkan kerja ladang.'},
   monSurgeOff:{zh:'目前无季风涌（MSI {v}）。东北季风期间会持续监测。',
-               en:'No active surge right now (MSI {v}). Monitored through the NE monsoon.'},
+               en:'No active surge right now (MSI {v}). Monitored through the NE monsoon.',
+               ms:'Tiada luruan aktif sekarang (MSI {v}). Dipantau sepanjang monsun Timur Laut.'},
   monSurgeNA: {zh:'季风涌为东北季风（11–3月）现象，当前季节不适用。',
-               en:'Monsoon surges are a Northeast-Monsoon (Nov–Mar) phenomenon — not applicable this season.'},
-  monSurgeShort:{zh:'季风涌活跃 ⚠️', en:'surge active ⚠️'},
+               en:'Monsoon surges are a Northeast-Monsoon (Nov–Mar) phenomenon — not applicable this season.',
+               ms:'Luruan monsun ialah fenomena Monsun Timur Laut (Nov–Mac) — tidak berkaitan musim ini.'},
+  monSurgeShort:{zh:'季风涌活跃 ⚠️', en:'surge active ⚠️', ms:'luruan aktif ⚠️'},
   monStale:   {zh:'⚠️ 季风风场数据似乎未更新，暂不显示季风涌判断。',
-               en:'⚠️ The monsoon wind data appears out of date; surge reading withheld for now.'},
+               en:'⚠️ The monsoon wind data appears out of date; surge reading withheld for now.',
+               ms:'⚠️ Data angin monsun nampaknya lama; bacaan luruan ditahan buat masa ini.'},
   // farm advice
   monFarmSurge:{zh:'季风涌活跃 — 未来 1–3 天可能持续暴雨。优先防洪排水，暂缓喷药、采收与园区车辆通行。',
-               en:'Surge active — 1–3 days of heavy rain likely. Prioritise drainage and flood prep; hold spraying, harvesting, and vehicle access.'},
+               en:'Surge active — 1–3 days of heavy rain likely. Prioritise drainage and flood prep; hold spraying, harvesting, and vehicle access.',
+               ms:'Luruan aktif — hujan lebat 1–3 hari berkemungkinan. Utamakan saliran dan persediaan banjir; tangguhkan meracun, menuai dan laluan kenderaan.'},
   monFarmNE:  {zh:'东北季风（主雨季）— 雨量偏多，留意排水与根部病害，喷药窗口变窄；密切关注季风涌预警。',
-               en:'Northeast monsoon (main rainy season) — wetter overall; watch drainage and root disease, spray windows narrow, and watch for surge alerts.'},
+               en:'Northeast monsoon (main rainy season) — wetter overall; watch drainage and root disease, spray windows narrow, and watch for surge alerts.',
+               ms:'Monsun Timur Laut (musim hujan utama) — lebih basah secara keseluruhan; jaga saliran dan penyakit akar, peluang meracun menjadi sempit, dan awasi amaran luruan.'},
   monFarmSW:  {zh:'西南季风 — 半岛相对偏干，注意灌溉与火患；适合安排喷药与采收。',
-               en:'Southwest monsoon — relatively drier for the Peninsula; mind irrigation and fire risk, good for spraying and harvesting.'},
+               en:'Southwest monsoon — relatively drier for the Peninsula; mind irrigation and fire risk, good for spraying and harvesting.',
+               ms:'Monsun Barat Daya — agak kering bagi Semenanjung; jaga pengairan dan risiko kebakaran, sesuai untuk meracun dan menuai.'},
   monFarmInter:{zh:'季风过渡期 — 天气多变、午后雷雨多，按短期天气预报灵活安排农活。',
-               en:'Inter-monsoon — changeable weather with afternoon thunderstorms; plan fieldwork flexibly around short-range forecasts.'},
+               en:'Inter-monsoon — changeable weather with afternoon thunderstorms; plan fieldwork flexibly around short-range forecasts.',
+               ms:'Peralihan monsun — cuaca berubah-ubah dengan ribut petir petang; rancang kerja ladang secara fleksibel mengikut ramalan cuaca jangka pendek.'},
   // help guide
   helpMon:    {zh:'🌧️ 季风状态 + 季风涌：马来西亚一年有两个季风。东北季风（约 11–3月）是主雨季，东海岸（吉兰丹、登嘉楼、彭亨）与砂拉越、沙巴常有大雨与水患；西南季风（约 5月底–9月）对半岛相对偏干。两者之间是过渡期。最危险的是东北季风期间的「季风涌」：来自西伯利亚的冷空气化作强北风冲过南海，带来连续 1–3 天的暴雨。我们用 MetMalaysia 采用的季风涌指数 (MSI)：925 hPa 经向风在 110–117.5°E、15°N 的平均；当连续 3 天 < −8 m/s 即判定为季风涌。数据来自 Open-Meteo 的 925 hPa 风场（即时计算）。注意：这是趋势监测，正式预警请以 MetMalaysia 官方为准。',
-               en:'🌧️ Monsoon status + surge: Malaysia has two monsoons. The Northeast monsoon (~Nov–Mar) is the main rainy season, bringing heavy rain and floods to the east coast (Kelantan, Terengganu, Pahang) and Sarawak/Sabah; the Southwest monsoon (~late May–Sep) is relatively drier for the Peninsula, with an inter-monsoon transition between. The biggest hazard is the NE-monsoon "surge": cold air from Siberia becomes a strong northerly wind racing across the South China Sea, bringing 1–3 days of downpour. We use MetMalaysia\u2019s Meridional Surge Index (MSI): the average 925-hPa meridional wind over 110–117.5°E along 15°N; a surge is flagged when it stays below −8 m/s for 3 consecutive days. Data is computed live from Open-Meteo 925-hPa winds. Note: this is trend monitoring — for official warnings, always follow MetMalaysia.'},
-  monOutlookLabel:{zh:'MetMalaysia 官方预警', en:'MetMalaysia official warnings'},
+               en:'🌧️ Monsoon status + surge: Malaysia has two monsoons. The Northeast monsoon (~Nov–Mar) is the main rainy season, bringing heavy rain and floods to the east coast (Kelantan, Terengganu, Pahang) and Sarawak/Sabah; the Southwest monsoon (~late May–Sep) is relatively drier for the Peninsula, with an inter-monsoon transition between. The biggest hazard is the NE-monsoon "surge": cold air from Siberia becomes a strong northerly wind racing across the South China Sea, bringing 1–3 days of downpour. We use MetMalaysia\u2019s Meridional Surge Index (MSI): the average 925-hPa meridional wind over 110–117.5°E along 15°N; a surge is flagged when it stays below −8 m/s for 3 consecutive days. Data is computed live from Open-Meteo 925-hPa winds. Note: this is trend monitoring — for official warnings, always follow MetMalaysia.',
+               ms:'🌧️ Status monsun + luruan: Malaysia mempunyai dua monsun. Monsun Timur Laut (~Nov–Mac) ialah musim hujan utama, membawa hujan lebat dan banjir ke pantai timur (Kelantan, Terengganu, Pahang) serta Sarawak/Sabah; Monsun Barat Daya (~akhir Mei–Sep) agak kering bagi Semenanjung, dengan tempoh peralihan di antaranya. Bahaya terbesar ialah "luruan" monsun Timur Laut: udara sejuk dari Siberia menjadi angin utara kuat yang merentasi Laut China Selatan, membawa hujan lebat 1–3 hari. Kami menggunakan Indeks Luruan Meridional (MSI) MetMalaysia: purata angin meridional 925 hPa di 110–117.5°T sepanjang 15°U; luruan ditandakan apabila ia kekal di bawah −8 m/s selama 3 hari berturut-turut. Data dikira secara langsung daripada angin 925 hPa Open-Meteo. Nota: ini pemantauan trend — untuk amaran rasmi, sentiasa ikut MetMalaysia.'},
+  monOutlookLabel:{zh:'MetMalaysia 官方预警', en:'MetMalaysia official warnings', ms:'Amaran rasmi MetMalaysia'},
   monOutlookTxt:{zh:'马来西亚气象局 (MetMalaysia) 发布官方的季风涌预警与暴雨警报（黄／橙／红三级）。本软件的季风涌为即时估算，正式预警以官方为准。',
-                 en:'The Malaysian Meteorological Department (MetMalaysia) issues official surge alerts and heavy-rain warnings (Yellow/Orange/Red). This app\u2019s surge reading is a live estimate; always defer to MetMalaysia for official warnings.'},
-  monOutlookCheck:{zh:'查看 MetMalaysia 预警 ↗', en:'Check MetMalaysia warnings ↗'},
+                 en:'The Malaysian Meteorological Department (MetMalaysia) issues official surge alerts and heavy-rain warnings (Yellow/Orange/Red). This app\u2019s surge reading is a live estimate; always defer to MetMalaysia for official warnings.',
+                 ms:'Jabatan Meteorologi Malaysia (MetMalaysia) mengeluarkan amaran rasmi luruan dan amaran hujan lebat (Kuning/Jingga/Merah). Bacaan luruan aplikasi ini ialah anggaran masa nyata; sentiasa rujuk MetMalaysia untuk amaran rasmi.'},
+  monOutlookCheck:{zh:'查看 MetMalaysia 预警 ↗', en:'Check MetMalaysia warnings ↗', ms:'Lihat amaran MetMalaysia ↗'},
   // ---- ITCZ explainer (concept, no data feed) ----
   helpItcz:   {zh:'🌍 赤道辐合带 (ITCZ)：这是地球上最多雨的一条带——南北半球的信风在赤道附近相遇、空气被迫上升，形成连绵的雷暴云带，是热带降雨的「总开关」。马来西亚就在 ITCZ 的活动范围内（约 1–7°N）。关键是：ITCZ 会随太阳南北移动，一年两次经过我们头顶——大约 3–5月 与 10–11月，这正是「季风过渡期」，也是我们一年中雷暴最猛、午后暴雨最多的时候。换句话说，过渡期的大雨，本质就是 ITCZ 正压在我们上方。',
-               en:'🌍 Inter-Tropical Convergence Zone (ITCZ): the rainiest belt on Earth — where the trade winds of the two hemispheres meet near the equator, air is forced upward into a near-continuous band of thunderstorms. It is the master "switch" of tropical rainfall, and Malaysia sits right in its range (~1–7°N). The key point: the ITCZ migrates north and south with the sun, passing over us twice a year — roughly Mar–May and Oct–Nov. Those are the "inter-monsoon" periods, and our most thundery, afternoon-downpour time of year. In other words, the inter-monsoon heavy rain is essentially the ITCZ sitting overhead.'},
+               en:'🌍 Inter-Tropical Convergence Zone (ITCZ): the rainiest belt on Earth — where the trade winds of the two hemispheres meet near the equator, air is forced upward into a near-continuous band of thunderstorms. It is the master "switch" of tropical rainfall, and Malaysia sits right in its range (~1–7°N). The key point: the ITCZ migrates north and south with the sun, passing over us twice a year — roughly Mar–May and Oct–Nov. Those are the "inter-monsoon" periods, and our most thundery, afternoon-downpour time of year. In other words, the inter-monsoon heavy rain is essentially the ITCZ sitting overhead.',
+               ms:'🌍 Zon Penumpuan Antara Tropika (ITCZ): jalur paling banyak hujan di Bumi — tempat angin pasat dari kedua-dua hemisfera bertemu berhampiran khatulistiwa, memaksa udara naik menjadi jalur ribut petir yang hampir berterusan. Ia "suis utama" hujan tropika, dan Malaysia berada dalam julatnya (~1–7°U). Perkara penting: ITCZ bergerak ke utara dan selatan mengikut matahari, melalui atas kita dua kali setahun — kira-kira Mac–Mei dan Okt–Nov. Itulah tempoh "peralihan monsun", masa paling banyak ribut petir dan hujan lebat petang dalam setahun. Dengan kata lain, hujan lebat peralihan monsun pada dasarnya ialah ITCZ yang berada di atas kepala kita.'},
   helpItczNote:{zh:'ℹ️ ITCZ 没有单一的「每日数值」可以像 ENSO／IOD／MJO 那样直接显示，所以这里只作概念说明，不另设数据卡。其实你已经在间接追踪它了：季风状态、MJO、过渡期，都是 ITCZ 位置与强度的不同侧面。把上面几张卡一起看，就是在看 ITCZ 对本区的影响。',
-               en:'ℹ️ The ITCZ has no single daily index to display the way ENSO/IOD/MJO do, so this is an explainer only — no separate data card. You are in fact already tracking it indirectly: the monsoon status, the MJO, and the inter-monsoon transitions are all different facets of where the ITCZ is and how strong it is. Reading the cards above together is reading the ITCZ\u2019s influence on our region.'},
-  itczDiagTitle:{zh:'ITCZ 一年如何经过马来西亚', en:'How the ITCZ moves past Malaysia through the year'},
-  itczLabelN: {zh:'7–8月：ITCZ 偏北（西南季风，半岛偏干）', en:'Jul–Aug: ITCZ to the north (SW monsoon, drier Peninsula)'},
-  itczLabelMid:{zh:'3–5月 与 10–11月：ITCZ 过境（过渡期，雷暴最多）', en:'Mar–May & Oct–Nov: ITCZ overhead (inter-monsoon, most storms)'},
-  itczLabelS: {zh:'12–2月：ITCZ 偏南（东北季风，东海岸大雨）', en:'Dec–Feb: ITCZ to the south (NE monsoon, east-coast rain)'},
-  itczMY:     {zh:'马来西亚', en:'Malaysia'},
-  itczEq:     {zh:'赤道', en:'Equator'},
-  iodUnit:    {zh:'°C · IOD 指数（每周）', en:'°C · IOD index (weekly)'},
+               en:'ℹ️ The ITCZ has no single daily index to display the way ENSO/IOD/MJO do, so this is an explainer only — no separate data card. You are in fact already tracking it indirectly: the monsoon status, the MJO, and the inter-monsoon transitions are all different facets of where the ITCZ is and how strong it is. Reading the cards above together is reading the ITCZ\u2019s influence on our region.',
+               ms:'ℹ️ ITCZ tiada satu indeks harian untuk dipaparkan seperti ENSO/IOD/MJO, jadi ini penerangan sahaja — tiada kad data berasingan. Sebenarnya anda sudah menjejakinya secara tidak langsung: status monsun, MJO dan peralihan monsun semuanya ialah aspek berbeza tentang kedudukan dan kekuatan ITCZ. Membaca kad-kad di atas bersama bermakna membaca pengaruh ITCZ terhadap kawasan kita.'},
+  itczDiagTitle:{zh:'ITCZ 一年如何经过马来西亚', en:'How the ITCZ moves past Malaysia through the year', ms:'Bagaimana ITCZ melalui Malaysia sepanjang tahun'},
+  itczLabelN: {zh:'7–8月：ITCZ 偏北（西南季风，半岛偏干）', en:'Jul–Aug: ITCZ to the north (SW monsoon, drier Peninsula)', ms:'Jul–Ogo: ITCZ di utara (monsun Barat Daya, Semenanjung lebih kering)'},
+  itczLabelMid:{zh:'3–5月 与 10–11月：ITCZ 过境（过渡期，雷暴最多）', en:'Mar–May & Oct–Nov: ITCZ overhead (inter-monsoon, most storms)', ms:'Mac–Mei & Okt–Nov: ITCZ di atas kita (peralihan monsun, paling banyak ribut)'},
+  itczLabelS: {zh:'12–2月：ITCZ 偏南（东北季风，东海岸大雨）', en:'Dec–Feb: ITCZ to the south (NE monsoon, east-coast rain)', ms:'Dis–Feb: ITCZ di selatan (monsun Timur Laut, hujan pantai timur)'},
+  itczMY:     {zh:'马来西亚', en:'Malaysia', ms:'Malaysia'},
+  itczEq:     {zh:'赤道', en:'Equator', ms:'Khatulistiwa'},
+  iodUnit:    {zh:'°C · IOD 指数（每周）', en:'°C · IOD index (weekly)', ms:'°C · indeks IOD (mingguan)'},
   iodAged:    {zh:'⚠️ IOD 数值日期为 {m}，可能已过期，需检查更新。暂不显示农事建议。',
-               en:'⚠️ IOD value is dated {m} and may be out of date — needs a check. Farm advice withheld until refreshed.'},
+               en:'⚠️ IOD value is dated {m} and may be out of date — needs a check. Farm advice withheld until refreshed.',
+               ms:'⚠️ Nilai IOD bertarikh {m} dan mungkin sudah lama — perlu disemak. Nasihat ladang ditahan sehingga dikemas kini.'},
   helpIod:    {zh:'🌏 印度洋偶极 (IOD)：看印度洋东西两侧的海温差。负 IOD = 东侧（靠苏门答腊、离我们近）偏暖 → 本区偏湿、早上多雨；正 IOD = 东侧偏冷 → 本区偏干。门槛：≥ +0.4 为正，≤ −0.4 为负，中间为中性。IOD 常与厄尔尼诺／拉尼娜同向出现：负 IOD + 拉尼娜最湿，正 IOD + 厄尔尼诺最干。但两者并非绑定——IOD 也可能在 ENSO 中性时单独出现，所以值得单独追踪。数值取 NOAA OISST 海温距平自行计算（标准 DMI 定义），每周更新。',
-               en:'🌏 Indian Ocean Dipole (IOD): the east–west sea-temperature gradient across the Indian Ocean. Negative IOD = the eastern side (near Sumatra, close to us) is warmer → wetter here, often morning rain; positive IOD = cooler eastern side → drier here. Thresholds: ≥ +0.4 positive, ≤ −0.4 negative, in between neutral. IOD often lines up with El Niño/La Niña: negative IOD + La Niña is wettest, positive IOD + El Niño is driest. But they are not locked together — IOD can also occur on its own while ENSO is neutral, which is why it is worth tracking separately. The value is computed here from NOAA OISST anomalies using the standard DMI definition, updated weekly.'},
+               en:'🌏 Indian Ocean Dipole (IOD): the east–west sea-temperature gradient across the Indian Ocean. Negative IOD = the eastern side (near Sumatra, close to us) is warmer → wetter here, often morning rain; positive IOD = cooler eastern side → drier here. Thresholds: ≥ +0.4 positive, ≤ −0.4 negative, in between neutral. IOD often lines up with El Niño/La Niña: negative IOD + La Niña is wettest, positive IOD + El Niño is driest. But they are not locked together — IOD can also occur on its own while ENSO is neutral, which is why it is worth tracking separately. The value is computed here from NOAA OISST anomalies using the standard DMI definition, updated weekly.',
+               ms:'🌏 Dipol Lautan Hindi (IOD): perbezaan suhu laut antara barat dan timur Lautan Hindi. IOD negatif = bahagian timur (berhampiran Sumatera, dekat dengan kita) lebih panas → lebih basah di sini, sering hujan pagi; IOD positif = bahagian timur lebih sejuk → lebih kering di sini. Ambang: ≥ +0.4 positif, ≤ −0.4 negatif, di antaranya neutral. IOD sering sejajar dengan El Niño/La Niña: IOD negatif + La Niña paling basah, IOD positif + El Niño paling kering. Tetapi kedua-duanya tidak terikat — IOD juga boleh berlaku sendiri semasa ENSO neutral, sebab itu ia wajar dijejaki berasingan. Nilai dikira di sini daripada anomali NOAA OISST menggunakan definisi DMI piawai, dikemas kini setiap minggu.'},
   helpIodNote:{zh:'ℹ️ 关于「IOD 暂时无法取得」：本软件不再抓取任何网页。IOD 由每日任务取 NOAA OISST 海温格点自行计算，结果存入本仓库；若没有，就改用 NOAA PSL 的月度 DMI。看到红色提示，代表这两个来源都没有新鲜数据（多半是每日任务没有跑成）。这是「宁可不显示，也不给过期或乱猜的数字」的安全设计。厄尔尼诺部分不受影响。请开发者查看 GitHub Actions 的 build-data 任务。',
-               en:'ℹ️ About the "IOD temporarily unavailable" notice: nothing is scraped from web pages any more. The IOD is computed from the NOAA OISST grid by a daily job and committed to this repo, with NOAA PSL\'s monthly DMI as a fallback. The red notice means neither source has fresh data — usually the daily job did not run. That is the safety design choosing to show nothing rather than a stale or guessed number. The El Niño side is unaffected. The developer should check the build-data job in GitHub Actions.'},
-  farmTitle:  {zh:'对果园的意义', en:'What it means for the orchard'},
-  stWhyMjo:   {zh:'MJO 正经过本区（第 {p} 位相，振幅 {a}）', en:'The MJO is over our region (phase {p}, amplitude {a})'},
-  stWhyMjoNear:{zh:'MJO 正从印度洋移近本区（第 {p} 位相，振幅 {a}）', en:'The MJO is moving in from the Indian Ocean (phase {p}, amplitude {a})'},
-  stWhyMjoFar:{zh:'MJO 走到对侧，本区雨水受抑制（第 {p} 位相，振幅 {a}）', en:'The MJO is on the far side, suppressing our rain (phase {p}, amplitude {a})'},
-  stWhySurge: {zh:'季风涌正在发生', en:'A monsoon surge is under way'},
-  vWetNow:    {zh:'未来 1–2 周偏湿 — 不必灌溉，注意排水与园区通路', en:'Wetter for the next 1–2 weeks — no irrigation needed; see to drainage and farm roads'},
-  vWetNowDryLater:{zh:'未来 1–2 周偏湿 — 不必灌溉，注意排水与园区通路', en:'Wetter for the next 1–2 weeks — no irrigation needed; see to drainage and farm roads'},
-  vWetNowDryLaterSub:{zh:'厄尔尼诺的偏干要等这波雨水过后才显现，那时再准备灌溉、留意火患与花期。', en:'El Niño\u2019s dry lean returns after this wet spell passes — prepare irrigation, fire watch and flowering then.'},
-  vWetBothSub:{zh:'拉尼娜本已偏湿，这 1–2 周雨水会更集中。', en:'La Niña already leans wet; the next 1–2 weeks will be wetter still.'},
-  vDryNow:    {zh:'未来 1–2 周偏干 — 利于喷药与采收，留意灌溉', en:'Drier for the next 1–2 weeks — good for spraying and harvest; keep an eye on irrigation'},
-  vDryNowWetLater:{zh:'未来 1–2 周偏干 — 趁机喷药与采收', en:'Drier for the next 1–2 weeks — use it for spraying and harvest'},
-  vDryNowWetLaterSub:{zh:'拉尼娜的偏湿会在这段干期过后回来，提前备好排水。', en:'La Niña\u2019s wet lean returns after this dry spell — get drainage ready.'},
-  vDryBothSub:{zh:'厄尔尼诺本已偏干，这 1–2 周会更干，灌溉优先。', en:'El Niño already leans dry; the next 1–2 weeks will be drier still — irrigation first.'},
-  farmWarmButWetNow:{zh:'（这是未来数月的背景。眼下 MJO／季风带来雨水，暂不需灌溉。）', en:'(That is the months-ahead background. Right now the MJO / monsoon is bringing rain, so irrigation can wait.)'},
-  farmCoolButDryNow:{zh:'（这是未来数月的背景。眼下 1–2 周偏干，适合喷药与采收。）', en:'(That is the months-ahead background. The next 1–2 weeks are drier — good for spraying and harvest.)'},
-  verdictStale:{zh:'数据过期 — 暂不提供建议，请点「刷新数据」', en:'Data out of date — no advice until it refreshes'},
-  roniStaleNote:{zh:'官方 RONI 最新一季（{s}）已超过正常更新周期，数值仅供参考，不作建议。', en:'The latest official RONI season ({s}) is older than its normal update cycle. Shown for reference only; no advice is given from it.'},
-  ensoStaleNote:{zh:'ENSO 数据已过期，暂不提供果园建议。', en:'ENSO data is out of date, so no orchard advice is given right now.'},
-  ensoStaleShort:{zh:'数据过期（暂不提供）', en:'data out of date (withheld)'},
+               en:'ℹ️ About the "IOD temporarily unavailable" notice: nothing is scraped from web pages any more. The IOD is computed from the NOAA OISST grid by a daily job and committed to this repo, with NOAA PSL\'s monthly DMI as a fallback. The red notice means neither source has fresh data — usually the daily job did not run. That is the safety design choosing to show nothing rather than a stale or guessed number. The El Niño side is unaffected. The developer should check the build-data job in GitHub Actions.',
+               ms:'ℹ️ Tentang notis "IOD tidak dapat diperoleh buat sementara": tiada lagi data diambil daripada laman web. IOD dikira daripada grid NOAA OISST oleh tugas harian dan disimpan dalam repo ini, dengan DMI bulanan NOAA PSL sebagai sandaran. Notis merah bermakna kedua-dua sumber tiada data baharu — biasanya tugas harian tidak berjalan. Itulah reka bentuk keselamatan yang memilih untuk tidak menunjukkan apa-apa daripada angka lama atau tekaan. Bahagian El Niño tidak terjejas. Pembangun perlu menyemak tugas build-data di GitHub Actions.'},
+  farmTitle:  {zh:'对果园的意义', en:'What it means for the orchard', ms:'Maksudnya untuk kebun'},
+  stWhyMjo:   {zh:'MJO 正经过本区（第 {p} 位相，振幅 {a}）', en:'The MJO is over our region (phase {p}, amplitude {a})', ms:'MJO berada di atas kawasan kita (fasa {p}, amplitud {a})'},
+  stWhyMjoNear:{zh:'MJO 正从印度洋移近本区（第 {p} 位相，振幅 {a}）', en:'The MJO is moving in from the Indian Ocean (phase {p}, amplitude {a})', ms:'MJO sedang bergerak masuk dari Lautan Hindi (fasa {p}, amplitud {a})'},
+  stWhyMjoFar:{zh:'MJO 走到对侧，本区雨水受抑制（第 {p} 位相，振幅 {a}）', en:'The MJO is on the far side, suppressing our rain (phase {p}, amplitude {a})', ms:'MJO berada di sebelah jauh, mengurangkan hujan kita (fasa {p}, amplitud {a})'},
+  stWhySurge: {zh:'季风涌正在发生', en:'A monsoon surge is under way', ms:'Luruan monsun sedang berlaku'},
+  vWetNow:    {zh:'未来 1–2 周偏湿 — 不必灌溉，注意排水与园区通路', en:'Wetter for the next 1–2 weeks — no irrigation needed; see to drainage and farm roads', ms:'Lebih basah untuk 1–2 minggu akan datang — tidak perlu pengairan; jaga saliran dan jalan ladang'},
+  vWetNowDryLater:{zh:'未来 1–2 周偏湿 — 不必灌溉，注意排水与园区通路', en:'Wetter for the next 1–2 weeks — no irrigation needed; see to drainage and farm roads', ms:'Lebih basah untuk 1–2 minggu akan datang — tidak perlu pengairan; jaga saliran dan jalan ladang'},
+  vWetNowDryLaterSub:{zh:'厄尔尼诺的偏干要等这波雨水过后才显现，那时再准备灌溉、留意火患与花期。', en:'El Niño\u2019s dry lean returns after this wet spell passes — prepare irrigation, fire watch and flowering then.', ms:'Kecenderungan kering El Niño kembali selepas tempoh basah ini berlalu — ketika itu sediakan pengairan, awasi kebakaran dan pembungaan.'},
+  vWetBothSub:{zh:'拉尼娜本已偏湿，这 1–2 周雨水会更集中。', en:'La Niña already leans wet; the next 1–2 weeks will be wetter still.', ms:'La Niña memang cenderung basah; 1–2 minggu akan datang akan lebih basah lagi.'},
+  vDryNow:    {zh:'未来 1–2 周偏干 — 利于喷药与采收，留意灌溉', en:'Drier for the next 1–2 weeks — good for spraying and harvest; keep an eye on irrigation', ms:'Lebih kering untuk 1–2 minggu akan datang — sesuai untuk meracun dan menuai; pantau pengairan'},
+  vDryNowWetLater:{zh:'未来 1–2 周偏干 — 趁机喷药与采收', en:'Drier for the next 1–2 weeks — use it for spraying and harvest', ms:'Lebih kering untuk 1–2 minggu akan datang — gunakan untuk meracun dan menuai'},
+  vDryNowWetLaterSub:{zh:'拉尼娜的偏湿会在这段干期过后回来，提前备好排水。', en:'La Niña\u2019s wet lean returns after this dry spell — get drainage ready.', ms:'Kecenderungan basah La Niña kembali selepas tempoh kering ini — sediakan saliran.'},
+  vDryBothSub:{zh:'厄尔尼诺本已偏干，这 1–2 周会更干，灌溉优先。', en:'El Niño already leans dry; the next 1–2 weeks will be drier still — irrigation first.', ms:'El Niño memang cenderung kering; 1–2 minggu akan datang akan lebih kering lagi — utamakan pengairan.'},
+  farmWarmButWetNow:{zh:'（这是未来数月的背景。眼下 MJO／季风带来雨水，暂不需灌溉。）', en:'(That is the months-ahead background. Right now the MJO / monsoon is bringing rain, so irrigation can wait.)', ms:'(Itu latar belakang untuk beberapa bulan akan datang. Sekarang MJO / monsun sedang membawa hujan, jadi pengairan boleh ditangguhkan.)'},
+  farmCoolButDryNow:{zh:'（这是未来数月的背景。眼下 1–2 周偏干，适合喷药与采收。）', en:'(That is the months-ahead background. The next 1–2 weeks are drier — good for spraying and harvest.)', ms:'(Itu latar belakang untuk beberapa bulan akan datang. 1–2 minggu akan datang lebih kering — sesuai untuk meracun dan menuai.)'},
+  verdictStale:{zh:'数据过期 — 暂不提供建议，请点「刷新数据」', en:'Data out of date — no advice until it refreshes', ms:'Data sudah lama — tiada nasihat sehingga dikemas kini'},
+  roniStaleNote:{zh:'官方 RONI 最新一季（{s}）已超过正常更新周期，数值仅供参考，不作建议。', en:'The latest official RONI season ({s}) is older than its normal update cycle. Shown for reference only; no advice is given from it.', ms:'Musim RONI rasmi terkini ({s}) lebih lama daripada kitaran kemas kini biasa. Ditunjukkan sebagai rujukan sahaja; tiada nasihat diberi berdasarkannya.'},
+  ensoStaleNote:{zh:'ENSO 数据已过期，暂不提供果园建议。', en:'ENSO data is out of date, so no orchard advice is given right now.', ms:'Data ENSO sudah lama, jadi tiada nasihat kebun diberi buat masa ini.'},
+  ensoStaleShort:{zh:'数据过期（暂不提供）', en:'data out of date (withheld)', ms:'data sudah lama (ditahan)'},
   iodCredit:  {zh:'🙏 本 IOD 功能源自农友 Wei Jian 的提问——他注意到负 IOD 时本地早上常下雨、影响农活。谢谢他的宝贵反馈，让这个工具对大家更有用。',
-               en:'🙏 This IOD feature came from a question by fellow grower Wei Jian, who noticed that negative IOD often brings morning rain here and affects fieldwork. Thank you for the valuable feedback that made this tool better for everyone.'},
-  srcTitle:   {zh:'数据来源', en:'Data sources'},
-  qrTitle:    {zh:'扫码打开这个软件', en:'Scan to open this app'},
-  qrHint:     {zh:'用手机相机扫描，分享给其他农友', en:'Scan with your phone camera — share with other farmers'},
-  staleWarn:  {zh:'⚠️ 数据可能过期', en:'⚠️ Data looks old'},
-  offlineCache:{zh:'📴 离线模式 · 显示缓存数据', en:'📴 Offline · showing cached data'},
-  cachedAt:   {zh:'数据缓存于', en:'Data cached'},
+               en:'🙏 This IOD feature came from a question by fellow grower Wei Jian, who noticed that negative IOD often brings morning rain here and affects fieldwork. Thank you for the valuable feedback that made this tool better for everyone.',
+               ms:'🙏 Ciri IOD ini datang daripada soalan rakan pekebun Wei Jian, yang perasan IOD negatif sering membawa hujan pagi di sini dan menjejaskan kerja ladang. Terima kasih atas maklum balas berharga yang menjadikan alat ini lebih baik untuk semua.'},
+  srcTitle:   {zh:'数据来源', en:'Data sources', ms:'Sumber data'},
+  qrTitle:    {zh:'扫码打开这个软件', en:'Scan to open this app', ms:'Imbas untuk membuka aplikasi ini'},
+  qrHint:     {zh:'用手机相机扫描，分享给其他农友', en:'Scan with your phone camera — share with other farmers', ms:'Imbas dengan kamera telefon — kongsi dengan pekebun lain'},
+  staleWarn:  {zh:'⚠️ 数据可能过期', en:'⚠️ Data looks old', ms:'⚠️ Data nampak lama'},
+  offlineCache:{zh:'📴 离线模式 · 显示缓存数据', en:'📴 Offline · showing cached data', ms:'📴 Luar talian · memaparkan data simpanan'},
+  cachedAt:   {zh:'数据缓存于', en:'Data cached', ms:'Data disimpan'},
   staleNote:  {zh:'最新一周已落后约 {n} 周。可能是 NOAA 数据延迟，或软件未更新。请点「刷新数据」，或确认已上传最新版本。',
-               en:'The latest week is about {n} weeks behind. NOAA\u2019s feed may be delayed, or the app may be outdated. Try "Refresh data", or check you uploaded the newest version.'},
-  elnino:     {zh:'厄尔尼诺', en:'El Niño'},
-  lanina:     {zh:'拉尼娜', en:'La Niña'},
-  neutral:    {zh:'中性', en:'Neutral'},
-  elninoCond: {zh:'厄尔尼诺状态', en:'El Niño conditions'},
-  laninaCond: {zh:'拉尼娜状态', en:'La Niña conditions'},
-  neutralCond:{zh:'ENSO 中性', en:'ENSO-neutral'},
-  latestSeason:{zh:'最新季度', en:'Latest season'},
-  prevSeason: {zh:'上一季度', en:'Previous season'},
-  trend3:     {zh:'近三季走向', en:'3-season trend'},
-  rising:     {zh:'上升 ↑', en:'Rising ↑'},
-  falling:    {zh:'下降 ↓', en:'Falling ↓'},
-  steady:     {zh:'平稳 →', en:'Steady →'},
-  week:       {zh:'当周', en:'This week'},
-  weekAgo:    {zh:'一周前', en:'Week ago'},
-  nino34:     {zh:'Niño 3.4', en:'Niño 3.4'},
-  weak:       {zh:'弱', en:'Weak'},
-  moderate:   {zh:'中等', en:'Moderate'},
-  strong:     {zh:'强', en:'Strong'},
-  verystrong: {zh:'极强', en:'Very strong'},
-  refresh:    {zh:'刷新数据', en:'Refresh data'},
-  shareBtn:   {zh:'分享到 WhatsApp', en:'Share to WhatsApp'},
-  shotBtn:    {zh:'分享图片（海域地图 · IOD · MJO）', en:'Share as image (map · IOD · MJO)'},
-  shotTitle:  {zh:'分享图片', en:'Share images'},
-  shotMaking: {zh:'正在生成图片…', en:'Making the images…'},
-  shotShare:  {zh:'分享', en:'Share'},
-  shotSave:   {zh:'保存到手机', en:'Save'},
-  shotReady:  {zh:'图片已准备好（地图、IOD、MJO 与今日摘要合成一张，顺序固定）。点「分享」发给朋友或群组。', en:'Image ready (map, IOD, MJO and today\u2019s summary in one picture, always in order). Tap Share to send it.'},
-  shotReadyNoShare:{zh:'图片已准备好。这个浏览器不支持直接分享图片，请点「保存到手机」再从相册发送。', en:'Image ready. This browser cannot share images directly — tap Save, then send it from your gallery.'},
-  shotSkipped:{zh:'已略过（数据过期，不分享旧数字）：{l}', en:'Left out (data out of date — old numbers are not shared): {l}'},
-  shotNone:   {zh:'三项数据目前都已过期，暂时没有可分享的图片。请先点「刷新数据」。', en:'All three readings are out of date, so there is nothing to share. Tap Refresh first.'},
-  shotFailed: {zh:'图片生成失败：{e}', en:'Could not make the images: {e}'},
-  shotObsWeek:{zh:'观测周', en:'Week of'},
-  shotObsDay: {zh:'观测日', en:'Observed'},
-  shotSrc:    {zh:'数据来源', en:'Source'},
-  shotMade:   {zh:'生成于', en:'Made'},
-  shotIodComputed:{zh:'NOAA OISST（本软件自行计算）', en:'NOAA OISST (computed by this app)'},
-  shotDataDate:{zh:'数据日期', en:'Data date'},
-  shotNinoNote:{zh:'橙框 Niño 3.4 是判断厄尔尼诺／拉尼娜的主指标。红 = 偏暖，蓝 = 偏冷（°C 距平）。', en:'The orange-framed Niño 3.4 is the main El Niño / La Niña index. Red = warmer, blue = cooler than normal (°C).'},
-  shotMjoLbl: {zh:'位相 {p} · 振幅 {a}', en:'Phase {p} · amplitude {a}'},
-  sharePrevTitle:{zh:'预览与编辑 — 发送前可修改', en:'Preview & edit — adjust before sending'},
-  shareSend:  {zh:'发送', en:'Send'},
-  shareCancel:{zh:'取消', en:'Cancel'},
-  outlookLbl: {zh:'NOAA 官方展望', en:'NOAA outlook'},
-  outlookNote:{zh:'（NOAA 原文，每月更新）', en:'(NOAA original text, monthly)'},
-  outlookMT:  {zh:'AI 翻译，以英文原文为准（原文见 ⓘ 说明）', en:'AI translation; the English original prevails (see the ⓘ guide)'},
+               en:'The latest week is about {n} weeks behind. NOAA\u2019s feed may be delayed, or the app may be outdated. Try "Refresh data", or check you uploaded the newest version.',
+               ms:'Minggu terkini ketinggalan kira-kira {n} minggu. Suapan NOAA mungkin lewat, atau aplikasi mungkin versi lama. Cuba "Muat semula data", atau pastikan anda memuat naik versi terbaharu.'},
+  elnino:     {zh:'厄尔尼诺', en:'El Niño', ms:'El Niño'},
+  lanina:     {zh:'拉尼娜', en:'La Niña', ms:'La Niña'},
+  neutral:    {zh:'中性', en:'Neutral', ms:'Neutral'},
+  elninoCond: {zh:'厄尔尼诺状态', en:'El Niño conditions', ms:'Keadaan El Niño'},
+  laninaCond: {zh:'拉尼娜状态', en:'La Niña conditions', ms:'Keadaan La Niña'},
+  neutralCond:{zh:'ENSO 中性', en:'ENSO-neutral', ms:'ENSO neutral'},
+  latestSeason:{zh:'最新季度', en:'Latest season', ms:'Musim terkini'},
+  prevSeason: {zh:'上一季度', en:'Previous season', ms:'Musim sebelumnya'},
+  trend3:     {zh:'近三季走向', en:'3-season trend', ms:'Trend 3 musim'},
+  rising:     {zh:'上升 ↑', en:'Rising ↑', ms:'Meningkat ↑'},
+  falling:    {zh:'下降 ↓', en:'Falling ↓', ms:'Menurun ↓'},
+  steady:     {zh:'平稳 →', en:'Steady →', ms:'Stabil →'},
+  week:       {zh:'当周', en:'This week', ms:'Minggu ini'},
+  weekAgo:    {zh:'一周前', en:'Week ago', ms:'Minggu lepas'},
+  nino34:     {zh:'Niño 3.4', en:'Niño 3.4', ms:'Niño 3.4'},
+  weak:       {zh:'弱', en:'Weak', ms:'Lemah'},
+  moderate:   {zh:'中等', en:'Moderate', ms:'Sederhana'},
+  strong:     {zh:'强', en:'Strong', ms:'Kuat'},
+  verystrong: {zh:'极强', en:'Very strong', ms:'Sangat kuat'},
+  refresh:    {zh:'刷新数据', en:'Refresh data', ms:'Muat semula data'},
+  shareBtn:   {zh:'分享到 WhatsApp', en:'Share to WhatsApp', ms:'Kongsi ke WhatsApp'},
+  shotBtn:    {zh:'分享图片（海域地图 · IOD · MJO）', en:'Share as image (map · IOD · MJO)', ms:'Kongsi sebagai gambar (peta · IOD · MJO)'},
+  shotTitle:  {zh:'分享图片', en:'Share images', ms:'Kongsi gambar'},
+  shotMaking: {zh:'正在生成图片…', en:'Making the images…', ms:'Sedang menghasilkan gambar…'},
+  shotShare:  {zh:'分享', en:'Share', ms:'Kongsi'},
+  shotSave:   {zh:'保存到手机', en:'Save', ms:'Simpan'},
+  shotReady:  {zh:'图片已准备好（地图、IOD、MJO 与今日摘要合成一张，顺序固定）。点「分享」发给朋友或群组。', en:'Image ready (map, IOD, MJO and today\u2019s summary in one picture, always in order). Tap Share to send it.', ms:'Gambar sedia (peta, IOD, MJO dan ringkasan hari ini dalam satu gambar, sentiasa mengikut susunan). Tekan Kongsi untuk menghantarnya.'},
+  shotReadyNoShare:{zh:'图片已准备好。这个浏览器不支持直接分享图片，请点「保存到手机」再从相册发送。', en:'Image ready. This browser cannot share images directly — tap Save, then send it from your gallery.', ms:'Gambar sedia. Pelayar ini tidak dapat berkongsi gambar secara terus — tekan Simpan, kemudian hantar dari galeri anda.'},
+  shotSkipped:{zh:'已略过（数据过期，不分享旧数字）：{l}', en:'Left out (data out of date — old numbers are not shared): {l}', ms:'Tidak dimasukkan (data sudah lama — angka lama tidak dikongsi): {l}'},
+  shotNone:   {zh:'三项数据目前都已过期，暂时没有可分享的图片。请先点「刷新数据」。', en:'All three readings are out of date, so there is nothing to share. Tap Refresh first.', ms:'Ketiga-tiga bacaan sudah lama, jadi tiada apa untuk dikongsi. Tekan Muat semula dahulu.'},
+  shotFailed: {zh:'图片生成失败：{e}', en:'Could not make the images: {e}', ms:'Tidak dapat menghasilkan gambar: {e}'},
+  shotObsWeek:{zh:'观测周', en:'Week of', ms:'Minggu'},
+  shotObsDay: {zh:'观测日', en:'Observed', ms:'Dicerap'},
+  shotSrc:    {zh:'数据来源', en:'Source', ms:'Sumber'},
+  shotMade:   {zh:'生成于', en:'Made', ms:'Dihasilkan'},
+  shotIodComputed:{zh:'NOAA OISST（本软件自行计算）', en:'NOAA OISST (computed by this app)', ms:'NOAA OISST (dikira oleh aplikasi ini)'},
+  shotDataDate:{zh:'数据日期', en:'Data date', ms:'Tarikh data'},
+  shotNinoNote:{zh:'橙框 Niño 3.4 是判断厄尔尼诺／拉尼娜的主指标。红 = 偏暖，蓝 = 偏冷（°C 距平）。', en:'The orange-framed Niño 3.4 is the main El Niño / La Niña index. Red = warmer, blue = cooler than normal (°C).', ms:'Niño 3.4 berbingkai jingga ialah indeks utama El Niño / La Niña. Merah = lebih panas, biru = lebih sejuk daripada biasa (°C).'},
+  shotMjoLbl: {zh:'位相 {p} · 振幅 {a}', en:'Phase {p} · amplitude {a}', ms:'Fasa {p} · amplitud {a}'},
+  sharePrevTitle:{zh:'预览与编辑 — 发送前可修改', en:'Preview & edit — adjust before sending', ms:'Pratonton & sunting — ubah sebelum dihantar'},
+  shareSend:  {zh:'发送', en:'Send', ms:'Hantar'},
+  shareCancel:{zh:'取消', en:'Cancel', ms:'Batal'},
+  outlookLbl: {zh:'NOAA 官方展望', en:'NOAA outlook', ms:'Tinjauan NOAA'},
+  outlookNote:{zh:'（NOAA 原文，每月更新）', en:'(NOAA original text, monthly)', ms:'(teks asal NOAA, bulanan)'},
+  outlookMT:  {zh:'AI 翻译，以英文原文为准（原文见 ⓘ 说明）', en:'AI translation; the English original prevails (see the ⓘ guide)', ms:'Terjemahan AI; teks asal bahasa Inggeris diguna pakai (lihat panduan ⓘ)'},
   // --- plain-language helpers ---
-  helpToggle: {zh:'这些数字是什么意思？', en:'What do these numbers mean?'},
-  helpClose:  {zh:'收起说明', en:'Close explanation'},
-  helpClose:  {zh:'收起说明', en:'Hide explanation'},
+  helpToggle: {zh:'这些数字是什么意思？', en:'What do these numbers mean?', ms:'Apakah maksud nombor-nombor ini?'},
+  helpClose:  {zh:'收起说明', en:'Close explanation', ms:'Tutup penerangan'},
+  helpClose:  {zh:'收起说明', en:'Hide explanation', ms:'Tutup penerangan'},
   helpIntro:  {zh:'这个软件追踪太平洋赤道海面的温度，用来判断现在是 厄尔尼诺、拉尼娜，还是中性。这是影响马来西亚雨季旱季的大背景。',
-               en:'This app tracks the temperature of the Pacific Ocean along the equator. That tells us whether we are in El Niño, La Niña, or Neutral — the big pattern behind Malaysia\u2019s wet and dry seasons.'},
+               en:'This app tracks the temperature of the Pacific Ocean along the equator. That tells us whether we are in El Niño, La Niña, or Neutral — the big pattern behind Malaysia\u2019s wet and dry seasons.',
+               ms:'Aplikasi ini menjejaki suhu Lautan Pasifik di sepanjang khatulistiwa. Ia memberitahu sama ada kita dalam El Niño, La Niña atau Neutral — corak besar di sebalik musim basah dan kering Malaysia.'},
   helpElnino: {zh:'厄尔尼诺 = 太平洋偏暖 → 马来西亚通常 偏干、少雨。要防旱、防火、留意花期。',
-               en:'El Niño = Pacific warmer than usual → Malaysia is usually drier, less rain. Watch for drought, fire, and flowering.'},
+               en:'El Niño = Pacific warmer than usual → Malaysia is usually drier, less rain. Watch for drought, fire, and flowering.',
+               ms:'El Niño = Pasifik lebih panas daripada biasa → Malaysia biasanya lebih kering, kurang hujan. Awasi kemarau, kebakaran dan pembungaan.'},
   helpLanina: {zh:'拉尼娜 = 太平洋偏冷 → 马来西亚通常 偏湿、多雨。要防涝、防根病。',
-               en:'La Niña = Pacific cooler than usual → Malaysia is usually wetter, more rain. Watch for floods and root disease.'},
+               en:'La Niña = Pacific cooler than usual → Malaysia is usually wetter, more rain. Watch for floods and root disease.',
+               ms:'La Niña = Pasifik lebih sejuk daripada biasa → Malaysia biasanya lebih basah, lebih banyak hujan. Awasi banjir dan penyakit akar.'},
   helpNeutral:{zh:'中性 = 不冷不暖 → 雨量接近常年，没有特别偏向。',
-               en:'Neutral = not warm, not cool → rainfall close to normal, no strong tilt either way.'},
+               en:'Neutral = not warm, not cool → rainfall close to normal, no strong tilt either way.',
+               ms:'Neutral = tidak panas, tidak sejuk → hujan hampir normal, tiada kecenderungan kuat.'},
   helpNumber: {zh:'大数字 = 海温比正常 高几度（+）或低几度（−）。超过 +0.5 算厄尔尼诺，低于 −0.5 算拉尼娜，中间是中性。',
-               en:'The big number = how many degrees the sea is above (+) or below (−) normal. Above +0.5 = El Niño, below −0.5 = La Niña, in between = Neutral.'},
+               en:'The big number = how many degrees the sea is above (+) or below (−) normal. Above +0.5 = El Niño, below −0.5 = La Niña, in between = Neutral.',
+               ms:'Nombor besar = berapa darjah laut di atas (+) atau di bawah (−) normal. Melebihi +0.5 = El Niño, di bawah −0.5 = La Niña, di antaranya = Neutral.'},
   helpAnomaly: {zh:'「距平」是什么？= 跟 正常值的差，不是实际水温。例如海温 29°C、距平 +1.7，意思是「比这片海这个季节的常年平均 高 1.7 度」。正号 = 比正常暖（厄尔尼诺方向）；负号 = 比正常冷（拉尼娜方向）；接近 0 = 正常。注意：负号是「比正常冷」，不是说海水真的很冷 — 太平洋一直都很暖。「正常」是用 30 年（1991–2020）平均算出来的，所以新文件叫「9120」。',
-                en:'What is "anomaly"? = the difference from normal, NOT the actual water temperature. E.g. sea = 29°C, anomaly = +1.7 means "1.7 degrees warmer than this patch\u2019s usual average for this season". Plus = warmer than normal (El Niño direction); minus = cooler than normal (La Niña direction); near 0 = normal. Note: minus means "cooler than normal", not that the water is actually cold — the Pacific is always warm. "Normal" is the 30-year (1991–2020) average, which is why the new file is called "9120".'},
+                en:'What is "anomaly"? = the difference from normal, NOT the actual water temperature. E.g. sea = 29°C, anomaly = +1.7 means "1.7 degrees warmer than this patch\u2019s usual average for this season". Plus = warmer than normal (El Niño direction); minus = cooler than normal (La Niña direction); near 0 = normal. Note: minus means "cooler than normal", not that the water is actually cold — the Pacific is always warm. "Normal" is the 30-year (1991–2020) average, which is why the new file is called "9120".',
+                ms:'Apakah "anomali"? = perbezaan daripada normal, BUKAN suhu air sebenar. Contoh: laut = 29°C, anomali = +1.7 bermaksud "1.7 darjah lebih panas daripada purata biasa kawasan ini bagi musim ini". Tambah = lebih panas daripada normal (arah El Niño); tolak = lebih sejuk daripada normal (arah La Niña); hampir 0 = normal. Nota: tolak bermaksud "lebih sejuk daripada normal", bukan air itu benar-benar sejuk — Pasifik sentiasa panas. "Normal" ialah purata 30 tahun (1991–2020), sebab itu fail baharu dinamakan "9120".'},
   helpSeason:  {zh:'像 MAM、FMA 这种 = 三个月一组，用每个月的英文首字母。MAM = 三月-四月-五月（Mar-Apr-May），FMA = 二月-三月-四月（Feb-Mar-Apr）。每过一个月就往前推一格，所以差不多每月有一个新数字。',
-               en:'Labels like MAM, FMA = a group of 3 months, using each month\u2019s first letter. MAM = Mar-Apr-May, FMA = Feb-Mar-Apr. It slides forward one month at a time, so there\u2019s a new value about every month.'},
+               en:'Labels like MAM, FMA = a group of 3 months, using each month\u2019s first letter. MAM = Mar-Apr-May, FMA = Feb-Mar-Apr. It slides forward one month at a time, so there\u2019s a new value about every month.',
+               ms:'Label seperti MAM, FMA = kumpulan 3 bulan, menggunakan huruf pertama nama bulan dalam bahasa Inggeris. MAM = Mac-Apr-Mei, FMA = Feb-Mac-Apr. Ia bergerak ke hadapan sebulan demi sebulan, jadi ada nilai baharu kira-kira setiap bulan.'},
   helpWhat34:  {zh:'Niño 3.4 = 太平洋赤道上 一块固定海域 的名字（在国际换日线附近，离马来西亚很远）。科学家选它，是因为它的海温最能反映厄尔尼诺／拉尼娜。旁边的数字不是实际水温，而是 比正常高或低几度。RONI 和「每周 Niño 3.4」看的是同一块海，但不是同一个算法：RONI 会先减去整个热带海洋（20°S–20°N）的平均升温，再取三个月平均（慢、稳、已扣除全球变暖）；每周值是最新一周的原始距平，什么都没扣（快、跳动、数字偏大）。所以两者在厉尔尼诺期间会差得很明显，这是正常的。',
-               en:'Niño 3.4 = the name of a fixed patch of ocean on the equator in the central Pacific (near the date line, far from Malaysia). Scientists use it because its sea temperature best reflects El Niño / La Niña. The number beside it is NOT the actual water temperature — it\u2019s how many degrees above or below normal. RONI and "Weekly Niño 3.4" read the same patch of ocean but are not the same calculation: RONI first subtracts the average warming of the whole tropical ocean (20°S–20°N) and then averages three months (slow, steady, global warming removed); the weekly is the raw anomaly for the latest single week with nothing subtracted (fast, jumpy, and a bigger number). During El Niño the two will differ noticeably — that is expected.'},
+               en:'Niño 3.4 = the name of a fixed patch of ocean on the equator in the central Pacific (near the date line, far from Malaysia). Scientists use it because its sea temperature best reflects El Niño / La Niña. The number beside it is NOT the actual water temperature — it\u2019s how many degrees above or below normal. RONI and "Weekly Niño 3.4" read the same patch of ocean but are not the same calculation: RONI first subtracts the average warming of the whole tropical ocean (20°S–20°N) and then averages three months (slow, steady, global warming removed); the weekly is the raw anomaly for the latest single week with nothing subtracted (fast, jumpy, and a bigger number). During El Niño the two will differ noticeably — that is expected.',
+               ms:'Niño 3.4 = nama satu kawasan laut tetap di khatulistiwa di tengah Pasifik (berhampiran garis tarikh antarabangsa, jauh dari Malaysia). Saintis menggunakannya kerana suhu lautnya paling baik mencerminkan El Niño / La Niña. Nombor di sebelahnya BUKAN suhu air sebenar — ia berapa darjah di atas atau di bawah normal. RONI dan "Niño 3.4 mingguan" membaca kawasan laut yang sama tetapi bukan pengiraan yang sama: RONI terlebih dahulu menolak purata pemanasan seluruh lautan tropika (20°S–20°U) kemudian mengambil purata tiga bulan (perlahan, stabil, pemanasan global dikeluarkan); nilai mingguan ialah anomali mentah bagi satu minggu terkini tanpa apa-apa ditolak (cepat, turun naik, dan angka lebih besar). Semasa El Niño kedua-duanya akan berbeza dengan ketara — itu dijangka.'},
   helpWalker: {zh:'❓ 那么远的海（约 12,500 公里外）怎么会影响我们？靠的是一条横跨太平洋的空气大环流——「沃克环流 (Walker Circulation)」。平常，我们旁边（印尼、马来西亚一带）的海最暖，暖海把空气加热、上升成云致雨——这是我们头顶的「湿引擎」。厄尔尼诺时，这块暖水东移到中太平洋，上升致雨的区域也跟着东移、离开我们；而空气环流是一个闭环：一头上升，另一头就要下沉。上升区东移后，下沉的一头正好压在马来西亚上方——下沉气流是干的，抑制成云，于是我们偏干。所以不是热「传」过来，而是我们和中太平洋是同一个跷跷板的两端：那头升（湿），我们这头就降（干）。拉尼娜则相反，我们偏湿。这种「远隔相关」叫 teleconnection。',
-               en:'❓ How can an ocean that far away (~12,500 km) affect us? Through a giant loop of air spanning the Pacific — the Walker Circulation. Normally the ocean right beside us (around Indonesia and Malaysia) is the warmest; that warm water heats the air, which rises into clouds and rain — our overhead "wet engine." During El Niño, that warm pool shifts east to the central Pacific, and the rising, rainy zone follows it away from us. But the air loop is closed: where it rises on one side, it must sink on the other. With the rising branch shifted east, the sinking branch lands right over Malaysia — and sinking air is dry, suppressing clouds, so we lean drier. It isn\u2019t that heat travels here; it\u2019s that we and the central Pacific are two ends of the same see-saw: their end goes up (wet), our end goes down (dry). La Niña is the reverse — wetter for us. This link across distance is called a teleconnection.'},
-  walkerTitle:{zh:'沃克环流：厄尔尼诺时为何我们偏干', en:'Walker Circulation: why El Niño leaves us drier'},
-  walkerRise: {zh:'上升 · 多雨', en:'rising · rainy'},
-  walkerSink: {zh:'下沉 · 干燥', en:'sinking · dry'},
-  walkerMY:   {zh:'马来西亚', en:'Malaysia'},
-  walkerN34:  {zh:'中太平洋 (Niño 3.4)', en:'Central Pacific (Niño 3.4)'},
-  walkerWarm: {zh:'暖海东移 →', en:'warm water shifts east →'},
+               en:'❓ How can an ocean that far away (~12,500 km) affect us? Through a giant loop of air spanning the Pacific — the Walker Circulation. Normally the ocean right beside us (around Indonesia and Malaysia) is the warmest; that warm water heats the air, which rises into clouds and rain — our overhead "wet engine." During El Niño, that warm pool shifts east to the central Pacific, and the rising, rainy zone follows it away from us. But the air loop is closed: where it rises on one side, it must sink on the other. With the rising branch shifted east, the sinking branch lands right over Malaysia — and sinking air is dry, suppressing clouds, so we lean drier. It isn\u2019t that heat travels here; it\u2019s that we and the central Pacific are two ends of the same see-saw: their end goes up (wet), our end goes down (dry). La Niña is the reverse — wetter for us. This link across distance is called a teleconnection.',
+               ms:'❓ Bagaimana lautan sejauh itu (~12,500 km) boleh menjejaskan kita? Melalui gelung udara gergasi merentasi Pasifik — Peredaran Walker. Biasanya lautan di sebelah kita (sekitar Indonesia dan Malaysia) paling panas; air panas itu memanaskan udara, yang naik menjadi awan dan hujan — "enjin basah" di atas kita. Semasa El Niño, kolam panas itu beralih ke timur ke tengah Pasifik, dan zon naik yang berhujan mengikutinya menjauhi kita. Tetapi gelung udara itu tertutup: di mana udara naik di satu sisi, ia mesti turun di sisi lain. Dengan cabang naik beralih ke timur, cabang turun jatuh tepat di atas Malaysia — dan udara turun adalah kering, menghalang awan, jadi kita cenderung lebih kering. Bukan haba yang bergerak ke sini; kita dan tengah Pasifik ialah dua hujung jongkang-jongket yang sama: hujung mereka naik (basah), hujung kita turun (kering). La Niña adalah sebaliknya — lebih basah bagi kita. Hubungan jarak jauh ini dipanggil telesambungan (teleconnection).'},
+  walkerTitle:{zh:'沃克环流：厄尔尼诺时为何我们偏干', en:'Walker Circulation: why El Niño leaves us drier', ms:'Peredaran Walker: mengapa El Niño menjadikan kita lebih kering'},
+  walkerRise: {zh:'上升 · 多雨', en:'rising · rainy', ms:'naik · berhujan'},
+  walkerSink: {zh:'下沉 · 干燥', en:'sinking · dry', ms:'turun · kering'},
+  walkerMY:   {zh:'马来西亚', en:'Malaysia', ms:'Malaysia'},
+  walkerN34:  {zh:'中太平洋 (Niño 3.4)', en:'Central Pacific (Niño 3.4)', ms:'Pasifik Tengah (Niño 3.4)'},
+  walkerWarm: {zh:'暖海东移 →', en:'warm water shifts east →', ms:'air panas beralih ke timur →'},
   walkerNormalNote:{zh:'平常（非厄尔尼诺）：暖海在我们这侧，上升致雨在马来西亚上方——我们偏湿。',
-               en:'Normal (non-El Niño): the warm water is on our side and the rising, rainy branch sits over Malaysia — we lean wetter.'},
+               en:'Normal (non-El Niño): the warm water is on our side and the rising, rainy branch sits over Malaysia — we lean wetter.',
+               ms:'Normal (bukan El Niño): air panas berada di sebelah kita dan cabang naik yang berhujan berada di atas Malaysia — kita cenderung lebih basah.'},
   helpRoni:    {zh:'RONI =「相对海洋尼诺指数」，NOAA 自 2026 年 2 月起的官方指标，取三个月平均、每月更新。判断大趋势看它；因为是季平均，它比现实慢约 6 周。详情见 ⓘ 说明。',
-               en:'RONI = the Relative Oceanic Niño Index, NOAA official index since February 2026. A three-month mean, updated monthly. Read it for the big trend; because it is a seasonal average it runs about six weeks behind the present. Full explanation in the ⓘ guide.'},
+               en:'RONI = the Relative Oceanic Niño Index, NOAA official index since February 2026. A three-month mean, updated monthly. Read it for the big trend; because it is a seasonal average it runs about six weeks behind the present. Full explanation in the ⓘ guide.',
+               ms:'RONI = Relative Oceanic Niño Index, indeks rasmi NOAA sejak Februari 2026. Purata tiga bulan, dikemas kini setiap bulan. Baca untuk trend besar; kerana ia purata bermusim, ia ketinggalan kira-kira enam minggu daripada masa kini. Penerangan penuh dalam panduan ⓘ.'},
   helpRoniWhy: {zh:'🌊 为什么是 RONI 而不是 ONI？整个热带海洋都在变暖。旧的 ONI 拿太平洋的海温和 30 年平均相比，于是把这份全球增温也算进了厉尔尼诺的强度里 —— 厉尔尼诺看起来偏强，拉尼娜看起来偏弱。RONI 先减去整个热带（20°S–20°N）的平均距平，只留下太平洋自己的异常 —— 而风与雨真正回应的正是这一部分。NOAA 气候预测中心（CPC）已于 2026 年 2 月改用 RONI 作为官方指标，澳洲 BOM 也在 2025 年 9 月做了同样的切换。代价是反应慢：它取三个月平均、每月才发一次，事件正在发展时一定会低估当下。所以看「现在」要把三样一起读：RONI（季节）、每周 Niño 3.4（最快）、以及 NOAA 官方展望（前瞻）。',
-               en:'🌊 Why RONI and not ONI? The whole tropical ocean is warming. The old ONI compared Pacific sea temperature against a 30-year average, so that global warming got counted as El Niño strength — El Niños looked stronger and La Niñas weaker than the atmosphere actually felt them. RONI subtracts the tropical-wide (20°S–20°N) average first, leaving only the Pacific own anomaly — and that is the part the winds and rain respond to. NOAA Climate Prediction Center adopted RONI as its official index in February 2026, and Australia BOM made the same switch in September 2025. The cost is speed: it is a three-month mean published monthly, so while an event is developing it will always understate the present. Read three things together for the present: RONI (the season), the weekly Niño 3.4 (the fastest), and the NOAA outlook (what is ahead).'},
-  mapTitle:   {zh:'四个监测海域（由西到东）', en:'The four monitoring boxes (west to east)'},
-  mapCardTitle:{zh:'监测海域地图', en:'Monitoring-region map'},
+               en:'🌊 Why RONI and not ONI? The whole tropical ocean is warming. The old ONI compared Pacific sea temperature against a 30-year average, so that global warming got counted as El Niño strength — El Niños looked stronger and La Niñas weaker than the atmosphere actually felt them. RONI subtracts the tropical-wide (20°S–20°N) average first, leaving only the Pacific own anomaly — and that is the part the winds and rain respond to. NOAA Climate Prediction Center adopted RONI as its official index in February 2026, and Australia BOM made the same switch in September 2025. The cost is speed: it is a three-month mean published monthly, so while an event is developing it will always understate the present. Read three things together for the present: RONI (the season), the weekly Niño 3.4 (the fastest), and the NOAA outlook (what is ahead).',
+               ms:'🌊 Mengapa RONI dan bukan ONI? Seluruh lautan tropika sedang memanas. ONI lama membandingkan suhu laut Pasifik dengan purata 30 tahun, jadi pemanasan global itu turut dikira sebagai kekuatan El Niño — El Niño kelihatan lebih kuat dan La Niña lebih lemah daripada yang sebenarnya dirasai atmosfera. RONI menolak purata seluruh tropika (20°S–20°U) terlebih dahulu, meninggalkan hanya anomali Pasifik sendiri — dan itulah bahagian yang mempengaruhi angin dan hujan. Pusat Ramalan Iklim NOAA menerima pakai RONI sebagai indeks rasmi pada Februari 2026, dan BOM Australia membuat peralihan yang sama pada September 2025. Kosnya ialah kelajuan: ia purata tiga bulan yang diterbitkan setiap bulan, jadi semasa sesuatu peristiwa sedang berkembang ia akan sentiasa memperkecilkan keadaan semasa. Baca tiga perkara bersama untuk masa kini: RONI (musim), Niño 3.4 mingguan (paling pantas), dan tinjauan NOAA (apa yang akan datang).'},
+  mapTitle:   {zh:'四个监测海域（由西到东）', en:'The four monitoring boxes (west to east)', ms:'Empat kotak pemantauan (barat ke timur)'},
+  mapCardTitle:{zh:'监测海域地图', en:'Monitoring-region map', ms:'Peta kawasan pemantauan'},
   mapCardHint:{zh:'NOAA CPC 每周监测这四个海域的海面温度距平。方框按真实经纬度投影，边界贴着球面而不是横切过去。颜色为该海域本周的距平：红＝偏暖，蓝＝偏冷。可拖动旋转。',
-               en:'NOAA CPC tracks the sea-surface temperature anomaly in these four boxes every week. The boxes are drawn in true coordinates and their edges follow the sphere rather than cutting across it. Colour is this week\u2019s anomaly: red = warmer, blue = cooler. Drag to rotate.'},
-  mapViewPac: {zh:'太平洋', en:'Pacific'},
-  mapViewMY:  {zh:'马来西亚', en:'Malaysia'},
+               en:'NOAA CPC tracks the sea-surface temperature anomaly in these four boxes every week. The boxes are drawn in true coordinates and their edges follow the sphere rather than cutting across it. Colour is this week\u2019s anomaly: red = warmer, blue = cooler. Drag to rotate.',
+               ms:'NOAA CPC menjejaki anomali suhu permukaan laut di empat kotak ini setiap minggu. Kotak dilukis mengikut koordinat sebenar dan sempadannya mengikut lengkung sfera, bukan memotong merentasinya. Warna ialah anomali minggu ini: merah = lebih panas, biru = lebih sejuk. Seret untuk memutar.'},
+  mapViewPac: {zh:'太平洋', en:'Pacific', ms:'Pasifik'},
+  mapViewMY:  {zh:'马来西亚', en:'Malaysia', ms:'Malaysia'},
   mapDragHint:{zh:'任意方向拖动旋转 · 双指或按钮缩放',
-               en:'Drag any direction to rotate · pinch or use the buttons to zoom'},
-  mapOpen:    {zh:'点开大图', en:'Open full map'},
-  mapZoomIn:  {zh:'放大', en:'Zoom in'},
-  mapZoomOut: {zh:'缩小', en:'Zoom out'},
-  wkChange:   {zh:'较上周', en:'Change vs last week'},
-  wkTrendLbl: {zh:'近 12 周 Niño 3.4 走势', en:'Niño 3.4, last 12 weeks'},
+               en:'Drag any direction to rotate · pinch or use the buttons to zoom',
+               ms:'Seret ke mana-mana arah untuk memutar · cubit atau guna butang untuk zum'},
+  mapOpen:    {zh:'点开大图', en:'Open full map', ms:'Buka peta penuh'},
+  mapZoomIn:  {zh:'放大', en:'Zoom in', ms:'Zum masuk'},
+  mapZoomOut: {zh:'缩小', en:'Zoom out', ms:'Zum keluar'},
+  wkChange:   {zh:'较上周', en:'Change vs last week', ms:'Perubahan berbanding minggu lepas'},
+  wkTrendLbl: {zh:'近 12 周 Niño 3.4 走势', en:'Niño 3.4, last 12 weeks', ms:'Niño 3.4, 12 minggu terakhir'},
   wkRegionsMoved:{zh:'Niño 1+2 / 3 / 4 的本周数值见下方地图卡，不在这里重复。',
-                  en:'Niño 1+2 / 3 / 4 for this week are on the map card below, not repeated here.'},
-  wkSame:     {zh:'持平', en:'no change'},
-  swNew:      {zh:'已有新版本', en:'A new version is ready'},
-  swReload:   {zh:'立即更新', en:'Update now'},
-  swUpdating: {zh:'更新中\u2026', en:'Updating\u2026'},
-  swBuild:    {zh:'版本', en:'Build'},
+                  en:'Niño 1+2 / 3 / 4 for this week are on the map card below, not repeated here.',
+                  ms:'Niño 1+2 / 3 / 4 bagi minggu ini ada pada kad peta di bawah, tidak diulang di sini.'},
+  wkSame:     {zh:'持平', en:'no change', ms:'tiada perubahan'},
+  swNew:      {zh:'已有新版本', en:'A new version is ready', ms:'Versi baharu sedia'},
+  swReload:   {zh:'立即更新', en:'Update now', ms:'Kemas kini sekarang'},
+  swUpdating: {zh:'更新中\u2026', en:'Updating\u2026', ms:'Mengemas kini…'},
+  swBuild:    {zh:'版本', en:'Build', ms:'Versi'},
 
   sstHint:    {zh:'点上面任一个可叠加 NOAA OISST 海温场并播放近 12 周变化；再点同一个即可关闭。',
-               en:'Tap either button above to overlay the NOAA OISST field and play the last 12 weeks; tap the same one again to switch it off.'},
+               en:'Tap either button above to overlay the NOAA OISST field and play the last 12 weeks; tap the same one again to switch it off.',
+               ms:'Tekan mana-mana butang di atas untuk menindih medan NOAA OISST dan memainkan 12 minggu terakhir; tekan butang yang sama sekali lagi untuk mematikannya.'},
   sstErr:     {zh:'⚠️ 海温场载入失败：{e}',
-               en:'⚠️ Could not load the SST field: {e}'},
-  sstLoading: {zh:'正在载入海温场…', en:'Loading the SST field…'},
+               en:'⚠️ Could not load the SST field: {e}',
+               ms:'⚠️ Tidak dapat memuatkan medan SST: {e}'},
+  sstLoading: {zh:'正在载入海温场…', en:'Loading the SST field…', ms:'Memuatkan medan SST…'},
   sstFallback:{zh:'⚠️ 近实时数据源没有回应，本图来自「{s}」——NOAA 的最终版，按设计会落后约两周。日期虽在范围内，但不是最新观测。',
-               en:'⚠️ The near-real-time source did not answer; this field came from “{s}” — NOAA’s final product, which lags about two weeks by design. The date looks recent enough, but it is not the latest observation.'},
+               en:'⚠️ The near-real-time source did not answer; this field came from “{s}” — NOAA’s final product, which lags about two weeks by design. The date looks recent enough, but it is not the latest observation.',
+               ms:'⚠️ Sumber hampir masa nyata tidak menjawab; medan ini datang daripada “{s}” — produk akhir NOAA, yang memang ketinggalan kira-kira dua minggu. Tarikhnya nampak agak baharu, tetapi ia bukan cerapan terkini.'},
   sstAged:    {zh:'⚠️ 最新一帧为 {d}（{n} 天前）。图仍可看，但每一帧都请以它自己的日期为准。',
-               en:'⚠️ Newest frame is {d} ({n} days old). Still usable, but read each frame by its own date.'},
+               en:'⚠️ Newest frame is {d} ({n} days old). Still usable, but read each frame by its own date.',
+               ms:'⚠️ Bingkai terbaharu ialah {d} ({n} hari lalu). Masih boleh digunakan, tetapi baca setiap bingkai mengikut tarikhnya sendiri.'},
   sstDead:    {zh:'⚠️ 海温场最新只到 {d}（{n} 天前），已超出正常延迟，暂不显示。可能是 NOAA 近实时数据源没有回应，退回到了两周延迟的最终版。',
-               en:'⚠️ The SST field only reaches {d} ({n} days old), beyond any normal latency, so it is withheld. Likely the NOAA near-real-time source did not answer and the two-week-delayed final product was used instead.'},
-  sstVarAnom: {zh:'距平', en:'Anomaly'},
-  sstVarSst:  {zh:'实测海温', en:'Actual SST'},
+               en:'⚠️ The SST field only reaches {d} ({n} days old), beyond any normal latency, so it is withheld. Likely the NOAA near-real-time source did not answer and the two-week-delayed final product was used instead.',
+               ms:'⚠️ Medan SST hanya sampai {d} ({n} hari lalu), melebihi kelewatan biasa, jadi ia ditahan. Berkemungkinan sumber hampir masa nyata NOAA tidak menjawab dan produk akhir yang lewat dua minggu digunakan.'},
+  sstVarAnom: {zh:'距平', en:'Anomaly', ms:'Anomali'},
+  sstVarSst:  {zh:'实测海温', en:'Actual SST', ms:'SST sebenar'},
   sstNoteAnom:{zh:'距平＝比 1971–2000 年同期平均高多少。注意：本图的气候基准是 1971–2000，而上方 Niño 指数用的是 1991–2020，所以本图颜色会略偏暖 —— 看形状与走向，不要拿来读数值。',
-               en:'Anomaly = departure from the 1971–2000 average. Note this field uses a 1971–2000 baseline while the Niño indices above use 1991–2020, so it reads slightly warmer. Read the shape, not the numbers.'},
+               en:'Anomaly = departure from the 1971–2000 average. Note this field uses a 1971–2000 baseline while the Niño indices above use 1991–2020, so it reads slightly warmer. Read the shape, not the numbers.',
+               ms:'Anomali = perbezaan daripada purata 1971–2000. Nota: medan ini menggunakan garis dasar 1971–2000 manakala indeks Niño di atas menggunakan 1991–2020, jadi ia kelihatan sedikit lebih panas. Baca bentuknya, bukan angkanya.'},
   sstNoteSst: {zh:'实测海面温度。深红色细线为 28°C 等温线 —— 暖池的边界。厄尔尼诺发展时它会一路向东推进；这条线的位置比颜色更能说明问题。',
-               en:'Actual sea-surface temperature. The dark red line is the 28°C isotherm — the edge of the warm pool. As El Niño develops it marches east; the line’s position tells you more than the colours do.'},
+               en:'Actual sea-surface temperature. The dark red line is the 28°C isotherm — the edge of the warm pool. As El Niño develops it marches east; the line’s position tells you more than the colours do.',
+               ms:'Suhu permukaan laut sebenar. Garis merah tua ialah isoterma 28°C — sempadan kolam panas. Apabila El Niño berkembang ia bergerak ke timur; kedudukan garis ini lebih bermakna daripada warnanya.'},
   // --- hero: the lag, and the direction of travel ---
   heroLag:    {zh:'RONI 是三个月平均值，上面这个数字描述的是 {s}，比今天落后约 6 周。事件正在发展时，它一定会低估当下。最新一周的 Niño 3.4 见下方。',
-               en:'RONI is a three-month mean, so the number above describes {s} — roughly six weeks behind today. While an event is developing it will always understate the present. The latest weekly Niño 3.4 is below.'},
-  strengthening:{zh:'正在增强', en:'strengthening'},
-  weakening:  {zh:'正在减弱', en:'weakening'},
-  heroAdvisory:{zh:'NOAA 最新公告：', en:'Latest NOAA bulletin: '},
+               en:'RONI is a three-month mean, so the number above describes {s} — roughly six weeks behind today. While an event is developing it will always understate the present. The latest weekly Niño 3.4 is below.',
+               ms:'RONI ialah purata tiga bulan, jadi nombor di atas menggambarkan {s} — kira-kira enam minggu ketinggalan dari hari ini. Semasa sesuatu peristiwa sedang berkembang ia akan sentiasa memperkecilkan keadaan semasa. Niño 3.4 mingguan terkini ada di bawah.'},
+  strengthening:{zh:'正在增强', en:'strengthening', ms:'semakin kuat'},
+  weakening:  {zh:'正在减弱', en:'weakening', ms:'semakin lemah'},
+  heroAdvisory:{zh:'NOAA 最新公告：', en:'Latest NOAA bulletin: ', ms:'Buletin NOAA terkini: '},
   wkVsRoni:   {zh:'为什么和上面的 RONI 不同？两者看同一片海，但 RONI 会先减去整个热带海洋的平均升温，再取三个月平均；这里的每周值是未扣除的原始距平，而且只有一周。所以厉尔尼诺期间，这个数字通常明显高于 RONI —— 两个都对，量的是不同的东西。',
-               en:'Why does this differ from the RONI above? Both read the same patch of ocean, but RONI first subtracts the warming of the whole tropical ocean and then averages three months; this weekly figure is the raw anomaly for a single week, with nothing subtracted. During El Niño it therefore usually sits well above RONI. Both are correct — they measure different things.'},
+               en:'Why does this differ from the RONI above? Both read the same patch of ocean, but RONI first subtracts the warming of the whole tropical ocean and then averages three months; this weekly figure is the raw anomaly for a single week, with nothing subtracted. During El Niño it therefore usually sits well above RONI. Both are correct — they measure different things.',
+               ms:'Mengapa ini berbeza daripada RONI di atas? Kedua-duanya membaca kawasan laut yang sama, tetapi RONI terlebih dahulu menolak pemanasan seluruh lautan tropika kemudian mengambil purata tiga bulan; angka mingguan ini ialah anomali mentah bagi satu minggu, tanpa apa-apa ditolak. Semasa El Niño ia biasanya jauh lebih tinggi daripada RONI. Kedua-duanya betul — ia mengukur perkara berbeza.'},
   iodNeutralNoVal:{zh:'BOM 目前报 IOD 为中性，并未公布具体数值（他们通常只在事件发生时才给出数字）。这不是抓取失败 —— 数据源就是这样写的。最新说明日期：{d}。',
-                   en:'BOM currently reports the IOD as neutral and publishes no figure (they usually only quote a number while an event is running). This is not a scrape failure — it is what the source says. Source statement dated: {d}.'},
-  mapLegWarm: {zh:'偏暖（厄尔尼诺方向）', en:'warmer (El Niño direction)'},
-  mapLegCool: {zh:'偏冷（拉尼娜方向）', en:'cooler (La Niña direction)'},
-  mapLeg34:   {zh:'Niño 3.4（主指标，只描边）', en:'Niño 3.4 (main index, outline only)'},
+                   en:'BOM currently reports the IOD as neutral and publishes no figure (they usually only quote a number while an event is running). This is not a scrape failure — it is what the source says. Source statement dated: {d}.',
+                   ms:'BOM kini melaporkan IOD sebagai neutral dan tidak menerbitkan angka (mereka biasanya hanya memberi nombor semasa sesuatu peristiwa berlaku). Ini bukan kegagalan pengambilan data — itulah yang dinyatakan sumber. Kenyataan sumber bertarikh: {d}.'},
+  mapLegWarm: {zh:'偏暖（厄尔尼诺方向）', en:'warmer (El Niño direction)', ms:'lebih panas (arah El Niño)'},
+  mapLegCool: {zh:'偏冷（拉尼娜方向）', en:'cooler (La Niña direction)', ms:'lebih sejuk (arah La Niña)'},
+  mapLeg34:   {zh:'Niño 3.4（主指标，只描边）', en:'Niño 3.4 (main index, outline only)', ms:'Niño 3.4 (indeks utama, garis luar sahaja)'},
   map34Note:  {zh:'Niño 3.4 横跨 Niño 3 与 Niño 4，所以只画边框不上色——在重叠区上色会混出一个并不存在的数值。它的读数见上方卡片。',
-               en:'Niño 3.4 straddles Niño 3 and Niño 4, so it is outlined rather than filled — tinting the overlap would blend a colour that no instrument measured. Its reading is on the card above.'},
+               en:'Niño 3.4 straddles Niño 3 and Niño 4, so it is outlined rather than filled — tinting the overlap would blend a colour that no instrument measured. Its reading is on the card above.',
+               ms:'Niño 3.4 merentasi Niño 3 dan Niño 4, jadi ia dilukis dengan garis luar sahaja — mewarnakan kawasan bertindih akan mencampurkan warna yang tidak diukur oleh mana-mana alat. Bacaannya ada pada kad di atas.'},
   mapStaleNote:{zh:'⚠️ 每周数据已过期，方框不上色。过期的颜色会看起来像「现在的情况」，因此宁可留白。',
-               en:'⚠️ The weekly data is out of date, so the boxes are left uncoloured. A stale tint would read as \u201Cright now\u201D, so it is withheld.'},
-  mapNoData:  {zh:'尚无每周数据，方框不上色。', en:'No weekly data yet, so the boxes are uncoloured.'},
+               en:'⚠️ The weekly data is out of date, so the boxes are left uncoloured. A stale tint would read as \u201Cright now\u201D, so it is withheld.',
+               ms:'⚠️ Data mingguan sudah lama, jadi kotak tidak diwarnakan. Warna lama akan dibaca sebagai “sekarang”, jadi ia ditahan.'},
+  mapNoData:  {zh:'尚无每周数据，方框不上色。', en:'No weekly data yet, so the boxes are uncoloured.', ms:'Belum ada data mingguan, jadi kotak tidak diwarnakan.'},
   mapProj:    {zh:'投影：O＝正射（地球仪）· E＝等距圆柱 · W3＝温克尔三重（earth.nullschool.net 的默认投影）',
-               en:'Projections: O = orthographic globe · E = equirectangular · W3 = Winkel tripel (the one earth.nullschool.net defaults to)'},
-  mapMY:      {zh:'马来西亚 / 你的果园', en:'Malaysia / your orchard'},
-  mapMYsub:   {zh:'最西端 — 厄尔尼诺时这里通常偏干', en:'far west — El Niño tends to be drier here'},
-  mapSA:      {zh:'南美洲', en:'S. America'},
+               en:'Projections: O = orthographic globe · E = equirectangular · W3 = Winkel tripel (the one earth.nullschool.net defaults to)',
+               ms:'Unjuran: O = glob ortografik · E = segi empat sama jarak · W3 = Winkel tripel (lalai earth.nullschool.net)'},
+  mapMY:      {zh:'马来西亚 / 你的果园', en:'Malaysia / your orchard', ms:'Malaysia / kebun anda'},
+  mapMYsub:   {zh:'最西端 — 厄尔尼诺时这里通常偏干', en:'far west — El Niño tends to be drier here', ms:'paling barat — El Niño cenderung lebih kering di sini'},
+  mapSA:      {zh:'南美洲', en:'S. America', ms:'Amerika Selatan'},
   helpWeekly:  {zh:'每周 Niño 3.4 = 同一片海域的 最新一周温度，更新更快。可以看最近是在升温还是降温。',
-                en:'Weekly Niño 3.4 = the latest week\u2019s temperature of the same ocean patch, updated faster. Shows whether things are warming or cooling lately.'},
+                en:'Weekly Niño 3.4 = the latest week\u2019s temperature of the same ocean patch, updated faster. Shows whether things are warming or cooling lately.',
+                ms:'Niño 3.4 mingguan = suhu minggu terkini bagi kawasan laut yang sama, dikemas kini lebih cepat. Menunjukkan sama ada keadaan sedang memanas atau menyejuk kebelakangan ini.'},
   helpTrend:   {zh:'趋势图 = 过去两年逐季的变化。中线＝0：向上为暖（厄尔尼诺方向），向下为冷（拉尼娜方向）。红柱=厄尔尼诺，蓝柱=拉尼娜，灰柱=中性。',
-                en:'Trend chart = how each season changed over the last two years. The middle line is zero: bars grow up for warm (El Niño side) and down for cool (La Niña side). Red = El Niño, blue = La Niña, grey = Neutral.'},
-  helpNow:     {zh:'现在的情况（实时数据）：', en:'Right now (live data): '},
-  helpOutlookLabel: {zh:'NOAA 官方展望', en:'NOAA official outlook'},
+                en:'Trend chart = how each season changed over the last two years. The middle line is zero: bars grow up for warm (El Niño side) and down for cool (La Niña side). Red = El Niño, blue = La Niña, grey = Neutral.',
+                ms:'Carta trend = perubahan setiap musim sepanjang dua tahun lepas. Garis tengah ialah sifar: bar naik untuk panas (arah El Niño) dan turun untuk sejuk (arah La Niña). Merah = El Niño, biru = La Niña, kelabu = Neutral.'},
+  helpNow:     {zh:'现在的情况（实时数据）：', en:'Right now (live data): ', ms:'Sekarang (data langsung): '},
+  helpOutlookLabel: {zh:'NOAA 官方展望', en:'NOAA official outlook', ms:'Tinjauan rasmi NOAA'},
   // NOTE: this paragraph must never state what the current outlook IS. That
   // sentence would freeze on the day it was typed while the live line below it
   // keeps updating — the two would eventually contradict each other in the same
   // panel. Describe the product; let the fetched values speak for the content.
   helpOutlookTxt:   {zh:'NOAA 每月人工发布一次官方展望：预警／守望状态，加一段简要研判。它不是本软件由实时数据算出来的。下面一行是最近一次抓取到的官方状态与发布日期；若已超过 45 天未更新，则宁可不显示，也不给你过期的结论。',
-                     en:'NOAA issues an official outlook about once a month — an advisory/watch status plus a short synopsis. It is human-issued, not computed from this app\u2019s live data. The line below is the most recent one fetched, with its issue date; if it is more than 45 days old nothing is shown rather than a stale conclusion.'},
-  helpOutlookCheck: {zh:'查看 NOAA 最新展望 ↗', en:'Check NOAA\u2019s latest outlook ↗'},
-  iodMapTitle:{zh:'印度洋的两端（西 vs 东）', en:'The two ends of the Indian Ocean (west vs east)'},
-  iodMapWest: {zh:'西极', en:'West pole'},
-  iodMapWestSub:{zh:'非洲东岸外海', en:'off East Africa'},
-  iodMapEast: {zh:'东极', en:'East pole'},
-  iodMapEastSub:{zh:'苏门答腊外海 — 离我们最近', en:'off Sumatra — nearest us'},
-  iodMapAfrica:{zh:'非洲', en:'Africa'},
-  iodMapSumatra:{zh:'苏门答腊', en:'Sumatra'},
-  iodMapMY:   {zh:'马来西亚 / 你的果园', en:'Malaysia / your orchard'},
-  iodMapMYsub:{zh:'就在东极旁 — 负 IOD 时这里通常偏湿', en:'right by the east pole — negative IOD tends to be wetter here'},
+                     en:'NOAA issues an official outlook about once a month — an advisory/watch status plus a short synopsis. It is human-issued, not computed from this app\u2019s live data. The line below is the most recent one fetched, with its issue date; if it is more than 45 days old nothing is shown rather than a stale conclusion.',
+                     ms:'NOAA mengeluarkan tinjauan rasmi kira-kira sebulan sekali — status amaran/pemerhatian serta ringkasan pendek. Ia dikeluarkan oleh manusia, bukan dikira daripada data langsung aplikasi ini. Baris di bawah ialah yang terkini diambil, dengan tarikh terbitannya; jika lebih 45 hari, tiada apa ditunjukkan daripada kesimpulan yang lama.'},
+  helpOutlookCheck: {zh:'查看 NOAA 最新展望 ↗', en:'Check NOAA\u2019s latest outlook ↗', ms:'Lihat tinjauan terkini NOAA ↗'},
+  iodMapTitle:{zh:'印度洋的两端（西 vs 东）', en:'The two ends of the Indian Ocean (west vs east)', ms:'Dua hujung Lautan Hindi (barat lwn timur)'},
+  iodMapWest: {zh:'西极', en:'West pole', ms:'Kutub barat'},
+  iodMapWestSub:{zh:'非洲东岸外海', en:'off East Africa', ms:'luar pantai Afrika Timur'},
+  iodMapEast: {zh:'东极', en:'East pole', ms:'Kutub timur'},
+  iodMapEastSub:{zh:'苏门答腊外海 — 离我们最近', en:'off Sumatra — nearest us', ms:'luar pantai Sumatera — paling dekat dengan kita'},
+  iodMapAfrica:{zh:'非洲', en:'Africa', ms:'Afrika'},
+  iodMapSumatra:{zh:'苏门答腊', en:'Sumatra', ms:'Sumatera'},
+  iodMapMY:   {zh:'马来西亚 / 你的果园', en:'Malaysia / your orchard', ms:'Malaysia / kebun anda'},
+  iodMapMYsub:{zh:'就在东极旁 — 负 IOD 时这里通常偏湿', en:'right by the east pole — negative IOD tends to be wetter here', ms:'tepat di sebelah kutub timur — IOD negatif cenderung lebih basah di sini'},
   iodMapFoot: {zh:'IOD 值 = 西极减东极的海温差',
-               en:'IOD value = west-pole minus east-pole sea-temperature difference'},
-  iodNowLabel:{zh:'现在的情况（BOM 实时）：', en:'Right now (live from BOM): '},
-  iodNowPos:  {zh:'正 IOD — 本区趋干。', en:'Positive IOD — drier tilt for our region.'},
-  iodNowNeg:  {zh:'负 IOD — 本区趋湿、早上多雨。', en:'Negative IOD — wetter tilt, more morning rain.'},
-  iodNowNeu:  {zh:'IOD 中性 — 没有明显偏移。', en:'IOD-neutral — no strong tilt.'},
-  iodOutlookLabel:{zh:'BOM 官方 IOD 页面', en:'BOM official IOD page'},
+               en:'IOD value = west-pole minus east-pole sea-temperature difference',
+               ms:'Nilai IOD = perbezaan suhu laut kutub barat tolak kutub timur'},
+  iodNowLabel:{zh:'现在的情况（BOM 实时）：', en:'Right now (live from BOM): ', ms:'Sekarang (langsung dari BOM): '},
+  iodNowPos:  {zh:'正 IOD — 本区趋干。', en:'Positive IOD — drier tilt for our region.', ms:'IOD positif — cenderung lebih kering bagi kawasan kita.'},
+  iodNowNeg:  {zh:'负 IOD — 本区趋湿、早上多雨。', en:'Negative IOD — wetter tilt, more morning rain.', ms:'IOD negatif — cenderung lebih basah, lebih banyak hujan pagi.'},
+  iodNowNeu:  {zh:'IOD 中性 — 没有明显偏移。', en:'IOD-neutral — no strong tilt.', ms:'IOD neutral — tiada kecenderungan kuat.'},
+  iodOutlookLabel:{zh:'BOM 官方 IOD 页面', en:'BOM official IOD page', ms:'Halaman IOD rasmi BOM'},
   iodOutlookTxt:  {zh:'澳洲气象局 (BOM) 每周更新 IOD 指数，并发布模式展望（未来几个月正/负 IOD 的可能性）。本软件不读取 BOM：IOD 由每日任务用 NOAA OISST 海温格点自行计算（方法与 BOM 指数相同，但不是 BOM 公布的数字），并以 NOAA PSL 月度 DMI 作为后备。',
-                   en:'The Bureau of Meteorology (BOM) updates the IOD index weekly and publishes a model outlook (the chance of a positive/negative IOD in coming months). This app does not read BOM: its IOD is computed daily from the NOAA OISST sea-temperature grid (the same method as BOM\u2019s index, but not BOM\u2019s published number), with NOAA PSL\u2019s monthly DMI as a fallback.'},
-  iodOutlookCheck:{zh:'查看 BOM 最新 IOD ↗', en:'Check BOM\u2019s latest IOD ↗'},
-  errTitle:   {zh:'无法载入数据', en:'Could not load data'},
+                   en:'The Bureau of Meteorology (BOM) updates the IOD index weekly and publishes a model outlook (the chance of a positive/negative IOD in coming months). This app does not read BOM: its IOD is computed daily from the NOAA OISST sea-temperature grid (the same method as BOM\u2019s index, but not BOM\u2019s published number), with NOAA PSL\u2019s monthly DMI as a fallback.',
+                   ms:'Biro Meteorologi Australia (BOM) mengemas kini indeks IOD setiap minggu dan menerbitkan tinjauan model (peluang IOD positif/negatif dalam beberapa bulan akan datang). Aplikasi ini tidak membaca BOM: IOD-nya dikira setiap hari daripada grid suhu laut NOAA OISST (kaedah sama dengan indeks BOM, tetapi bukan angka terbitan BOM), dengan DMI bulanan NOAA PSL sebagai sandaran.'},
+  iodOutlookCheck:{zh:'查看 BOM 最新 IOD ↗', en:'Check BOM\u2019s latest IOD ↗', ms:'Lihat IOD terkini BOM ↗'},
+  errTitle:   {zh:'无法载入数据', en:'Could not load data', ms:'Tidak dapat memuatkan data'},
   errBody:    {zh:'请检查网络或 Worker 设置。NOAA 数据需经 Cloudflare Worker 代理。',
-               en:'Check your network or Worker setup. NOAA feeds must be proxied via the Cloudflare Worker.'},
-  retry:      {zh:'重试', en:'Retry'},
-  updated:    {zh:'数据更新于', en:'Data updated'},
+               en:'Check your network or Worker setup. NOAA feeds must be proxied via the Cloudflare Worker.',
+               ms:'Semak rangkaian atau tetapan Worker anda. Suapan NOAA mesti melalui proksi Cloudflare Worker.'},
+  retry:      {zh:'重试', en:'Retry', ms:'Cuba lagi'},
+  updated:    {zh:'数据更新于', en:'Data updated', ms:'Data dikemas kini'},
   // Farm-context lines, keyed by phase
   farmWarm:   {zh:'厄尔尼诺通常为马来西亚带来 偏少雨量与干旱风险。注意灌溉、火患（FireWatch）、以及花期诱导窗口可能提前或延长。强厄尔尼诺年东马与半岛旱情更明显。',
-               en:'El Niño usually brings drier-than-normal rainfall and drought risk to Malaysia. Watch irrigation, fire risk (FireWatch), and flower-induction windows that may open earlier or longer. Strong El Niño years bring sharper drought to East Malaysia and the Peninsula.'},
+               en:'El Niño usually brings drier-than-normal rainfall and drought risk to Malaysia. Watch irrigation, fire risk (FireWatch), and flower-induction windows that may open earlier or longer. Strong El Niño years bring sharper drought to East Malaysia and the Peninsula.',
+               ms:'El Niño biasanya membawa hujan kurang daripada biasa dan risiko kemarau ke Malaysia. Pantau pengairan, risiko kebakaran (FireWatch), dan tempoh aruhan bunga yang mungkin bermula lebih awal atau lebih lama. Tahun El Niño kuat membawa kemarau lebih teruk ke Malaysia Timur dan Semenanjung.'},
   farmCool:   {zh:'拉尼娜通常带来 偏多雨量与水患风险。留意排水、根部病害（疫病）、以及花期可能被连绵雨水打断。喷药窗口变窄。',
-               en:'La Niña usually brings wetter-than-normal rainfall and flood risk. Watch drainage, root disease (Phytophthora), and flowering that rain may interrupt. Spray windows narrow.'},
+               en:'La Niña usually brings wetter-than-normal rainfall and flood risk. Watch drainage, root disease (Phytophthora), and flowering that rain may interrupt. Spray windows narrow.',
+               ms:'La Niña biasanya membawa hujan lebih daripada biasa dan risiko banjir. Pantau saliran, penyakit akar (Phytophthora), dan pembungaan yang mungkin terganggu oleh hujan. Peluang meracun menjadi sempit.'},
   farmNeutral:{zh:'ENSO 中性 — 雨量接近常年。无强烈的干湿偏移信号，按常规季候管理即可，并留意短期天气预报。',
-               en:'ENSO-neutral — rainfall near the long-term normal. No strong wet/dry tilt; manage by the usual seasonal calendar and watch short-range forecasts.'},
+               en:'ENSO-neutral — rainfall near the long-term normal. No strong wet/dry tilt; manage by the usual seasonal calendar and watch short-range forecasts.',
+               ms:'ENSO neutral — hujan hampir dengan normal jangka panjang. Tiada kecenderungan basah/kering yang kuat; urus mengikut kalendar musim biasa dan pantau ramalan cuaca jangka pendek.'},
+  // Seasonal verdict under the big number
+  verdictWarm:{zh:'偏干 — 准备灌溉、留意火患与花期', en:'Leaning drier — prepare irrigation, watch fire risk & flowering', ms:'Cenderung kering — sediakan pengairan, awasi risiko kebakaran & pembungaan'},
+  verdictCool:{zh:'偏湿 — 注意排水与根部病害', en:'Leaning wetter — watch drainage & root disease', ms:'Cenderung basah — awasi saliran & penyakit akar'},
+  verdictNeutral:{zh:'雨量接近常年 — 按常规管理', en:'Rainfall near normal — manage as usual', ms:'Hujan hampir normal — urus seperti biasa'},
+  // WhatsApp text + share-image headings
+  shareHead:  {zh:'🌊 气候信号快报', en:'🌊 Climate signals snapshot', ms:'🌊 Ringkasan isyarat iklim'},
+  shareWeekly:{zh:'每周 Niño3.4: ', en:'Weekly Niño3.4: ', ms:'Niño3.4 mingguan: '},
+  sharePhase: {zh:'位相', en:'phase', ms:'fasa'},
+  shareMonsoon:{zh:'季风: ', en:'Monsoon: ', ms:'Monsun: '},
+  shotSumTitle:{zh:'今日摘要', en:'Summary', ms:'Ringkasan'},
+  shotHead:   {zh:'厄尔尼诺 / 拉尼娜监测', en:'ENSO Monitor', ms:'Pemantau ENSO'},
+  shotHeadSub:{zh:'气候信号快报 · ', en:'Climate signals · ', ms:'Isyarat iklim · '},
   disclaimer: {zh:'仅供参考 — ENSO 是季节尺度信号，非每日天气预报。',
-               en:'Reference only — ENSO is a seasonal-scale signal, not a daily forecast.'},
+               en:'Reference only — ENSO is a seasonal-scale signal, not a daily forecast.',
+               ms:'Rujukan sahaja — ENSO ialah isyarat skala musim, bukan ramalan cuaca harian.'},
 };
-function tr(k){ return (T[k] && T[k][LANG]) || k; }
+function tr(k){ return (T[k] && (T[k][LANG] || T[k].en)) || k; }
 
 /* ===================== PARSERS ===================== */
 // RONI.ascii.txt / oni.ascii.txt : whitespace columns.
@@ -2093,12 +2189,12 @@ function iodPhaseOf(v){
 // Short month name in the current language for a 1-12 month number.
 function mjoDateTxt(m){
   return LANG === 'zh' ? m.year+'年'+m.month+'月'+m.day+'日'
+       : LANG === 'ms' ? m.day+' '+monthName(m.month)+' '+m.year
                        : monthName(m.month)+' '+m.day+', '+m.year;
 }
 function monthName(m){
-  var en = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   if (LANG === 'zh') return m + '月';
-  return en[m-1] || ('M'+m);
+  return monAbbr(m);
 }
 // MJO interpretation. Amplitude < 1 = weak/inactive (no usable signal).
 var MJO_ACTIVE = 1.0;
@@ -2140,50 +2236,59 @@ function fmtCacheTime(ms){
 function situationText(phase, strength, t3, roniVal, wkVal){
   var L = LANG;
   // 1) Headline state from official RONI
-  var stateZh, stateEn;
+  var stateZh, stateEn, stateMs;
   if (phase==='warm'){
     stateZh = '目前处于 厄尔尼诺' + (strength?'（'+tr(strength)+'）':'') + '，官方 RONI = '+fmt(roniVal)+'°C';
     stateEn = 'Currently El Niño' + (strength?' ('+tr(strength)+')':'') + ', official RONI = '+fmt(roniVal)+'°C';
+    stateMs = 'Kini El Niño' + (strength?' ('+tr(strength)+')':'') + ', RONI rasmi = '+fmt(roniVal)+'°C';
   } else if (phase==='cool'){
     stateZh = '目前处于 拉尼娜' + (strength?'（'+tr(strength)+'）':'') + '，官方 RONI = '+fmt(roniVal)+'°C';
     stateEn = 'Currently La Niña' + (strength?' ('+tr(strength)+')':'') + ', official RONI = '+fmt(roniVal)+'°C';
+    stateMs = 'Kini La Niña' + (strength?' ('+tr(strength)+')':'') + ', RONI rasmi = '+fmt(roniVal)+'°C';
   } else {
     stateZh = '目前 中性（不偏冷也不偏暖），官方 RONI = '+fmt(roniVal)+'°C';
     stateEn = 'Currently Neutral (neither warm nor cool), official RONI = '+fmt(roniVal)+'°C';
+    stateMs = 'Kini Neutral (tidak panas, tidak sejuk), RONI rasmi = '+fmt(roniVal)+'°C';
   }
   // 2) Direction of travel from the 3-season RONI trend
-  var dirZh, dirEn;
-  if (t3==='rising'){ dirZh='，并在 升温'; dirEn=', and warming'; }
-  else if (t3==='falling'){ dirZh='，并在 降温'; dirEn=', and cooling'; }
-  else { dirZh='，大致 平稳'; dirEn=', roughly steady'; }
+  var dirZh, dirEn, dirMs;
+  if (t3==='rising'){ dirZh='，并在 升温'; dirEn=', and warming'; dirMs=', dan semakin panas'; }
+  else if (t3==='falling'){ dirZh='，并在 降温'; dirEn=', and cooling'; dirMs=', dan semakin sejuk'; }
+  else { dirZh='，大致 平稳'; dirEn=', roughly steady'; dirMs=', secara amnya stabil'; }
   // 3) Latest weekly pulse — note if it disagrees with the slower seasonal state
   var wkPhase = phaseOf(wkVal);
-  var pulseZh, pulseEn;
+  var pulseZh, pulseEn, pulseMs;
   if (wkPhase !== phase){
     // weekly leading the seasonal average — the telltale of a transition
     var leanZh = wkPhase==='warm'?'偏暖':wkPhase==='cool'?'偏冷':'中性';
     var leanEn = wkPhase==='warm'?'warm':wkPhase==='cool'?'cool':'neutral';
+    var leanMs = wkPhase==='warm'?'panas':wkPhase==='cool'?'sejuk':'neutral';
+    pulseMs = '. Niño 3.4 minggu terkini = '+fmt(wkVal)+'°C ('+leanMs+'), mendahului purata bermusim — biasanya tanda peralihan sedang berlaku';
     pulseZh = '。最新一周的 Niño 3.4 = '+fmt(wkVal)+'°C（'+leanZh+'），比季节平均更快反映变化 — 这通常是 过渡期 的信号';
     pulseEn = '. The latest week\u2019s Niño 3.4 = '+fmt(wkVal)+'°C ('+leanEn+'), moving ahead of the seasonal average — usually a sign of a transition in progress';
   } else {
+    pulseMs = '. Niño 3.4 minggu terkini = '+fmt(wkVal)+'°C, selaras dengan keadaan bermusim';
     pulseZh = '。最新一周的 Niño 3.4 = '+fmt(wkVal)+'°C，与季节状态一致';
     pulseEn = '. The latest week\u2019s Niño 3.4 = '+fmt(wkVal)+'°C, consistent with the seasonal state';
   }
   // 4) Plain farm takeaway tied to the OBSERVED phase (no forecast)
-  var farmZh, farmEn;
+  var farmZh, farmEn, farmMs;
   if (phase==='warm' || (phase==='neutral' && wkPhase==='warm')){
     farmZh = '。对果园：注意 偏干、防火、灌溉，留意花期窗口';
     farmEn = '. For the orchard: watch for drier conditions, fire risk, irrigation, and flowering windows';
+    farmMs = '. Untuk kebun: awasi keadaan lebih kering, risiko kebakaran, pengairan, dan tempoh pembungaan';
   } else if (phase==='cool' || (phase==='neutral' && wkPhase==='cool')){
     farmZh = '。对果园：注意 偏湿、排水、根部病害';
     farmEn = '. For the orchard: watch for wetter conditions, drainage, and root disease';
+    farmMs = '. Untuk kebun: awasi keadaan lebih basah, saliran, dan penyakit akar';
   } else {
     farmZh = '。对果园：雨量接近常年，按常规季候管理';
     farmEn = '. For the orchard: rainfall near normal, manage by the usual seasonal calendar';
+    farmMs = '. Untuk kebun: hujan hampir normal, urus mengikut kalendar musim biasa';
   }
-  return (L==='zh')
-    ? (stateZh + dirZh + pulseZh + farmZh + '。')
-    : (stateEn + dirEn + pulseEn + farmEn + '.');
+  if (L==='zh') return stateZh + dirZh + pulseZh + farmZh + '。';
+  if (L==='ms') return stateMs + dirMs + pulseMs + farmMs + '.';
+  return stateEn + dirEn + pulseEn + farmEn + '.';
 }
 
 // Short, always-visible "second doctor" verdict under the big number.
@@ -2240,20 +2345,14 @@ function seasonalVerdict(phase, wkPhase){
   if (phase === 'neutral' && wkPhase !== 'neutral') lean = wkPhase; // transition tip
   if (lean === 'warm'){
     return { lean:'warm', icon:'☀️', cls:'verdict-warm',
-      text: (LANG==='zh')
-        ? '偏干 — 准备灌溉、留意火患与花期'
-        : 'Leaning drier — prepare irrigation, watch fire risk & flowering' };
+      text: tr('verdictWarm') };
   }
   if (lean === 'cool'){
     return { lean:'cool', icon:'🌧️', cls:'verdict-cool',
-      text: (LANG==='zh')
-        ? '偏湿 — 注意排水与根部病害'
-        : 'Leaning wetter — watch drainage & root disease' };
+      text: tr('verdictCool') };
   }
   return { lean:'neutral', icon:'⚖️', cls:'verdict-neutral',
-    text: (LANG==='zh')
-      ? '雨量接近常年 — 按常规管理'
-      : 'Rainfall near normal — manage as usual' };
+    text: tr('verdictNeutral') };
 }
 
 // Expand a 3-letter season code (e.g. "MAM") to plain month names so the
@@ -2263,12 +2362,11 @@ var SEAS_MONTHS = {
   AMJ:['4','5','6'], MJJ:['5','6','7'], JJA:['6','7','8'], JAS:['7','8','9'],
   ASO:['8','9','10'], SON:['9','10','11'], OND:['10','11','12'], NDJ:['11','12','1']
 };
-var MON_EN = ['','Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 function seasonPlain(code){
   var m = SEAS_MONTHS[code];
   if (!m) return '';
   if (LANG==='zh') return m[0]+'-'+m[1]+'-'+m[2]+'月';
-  return MON_EN[+m[0]]+'-'+MON_EN[+m[1]]+'-'+MON_EN[+m[2]];
+  return monAbbr(+m[0])+'-'+monAbbr(+m[1])+'-'+monAbbr(+m[2]);
 }
 
 // Builds the IOD card from the Worker's BOM scrape result {ok,value,asOf}.
@@ -2577,7 +2675,7 @@ function iodMap(){  var t = function(k){ return tr(k); };
     +'<rect x="6" y="70" width="348" height="92" rx="7" fill="#e0f2fe" stroke="#7dd3fc" stroke-width="1"/>'
     // equator line + label (label sits on the left, clear of the pole boxes)
     +'<line x1="6" y1="150" x2="354" y2="150" stroke="#0284c7" stroke-width="1" stroke-dasharray="3 3" opacity="0.6"/>'
-    +'<text x="46" y="160" font-size="8" fill="#0369a1" text-anchor="middle">'+ (LANG==='zh'?'赤道':'Equator') +'</text>'
+    +'<text x="46" y="160" font-size="8" fill="#0369a1" text-anchor="middle">'+ tr('itczEq') +'</text>'
     // Africa (west landmass) — labelled inside, below the box
     +'<rect x="10" y="80" width="20" height="64" rx="3" fill="#e2e8f0" stroke="#cbd5e1" stroke-width="1"/>'
     +'<text x="20" y="64" font-size="8.5" fill="#64748b" text-anchor="middle">'+t('iodMapAfrica')+'</text>'
@@ -3017,11 +3115,21 @@ var OUTLOOK_STATUS_ZH = {
   'final el nino advisory':  '厄尔尼诺最终警报（消退中）',
   'final la nina advisory':  '拉尼娜最终警报（消退中）'
 };
+var OUTLOOK_STATUS_MS = {
+  'not active':              'Tidak aktif (tiada amaran)',
+  'el nino watch':           'Pemerhatian El Niño (sedang terbentuk)',
+  'la nina watch':           'Pemerhatian La Niña (sedang terbentuk)',
+  'el nino advisory':        'Amaran El Niño (telah terbentuk)',
+  'la nina advisory':        'Amaran La Niña (telah terbentuk)',
+  'final el nino advisory':  'Amaran akhir El Niño (sedang reda)',
+  'final la nina advisory':  'Amaran akhir La Niña (sedang reda)'
+};
 function outlookStatusLabel(status){
-  if (LANG !== 'zh' || !status) return status;
+  var map = LANG === 'zh' ? OUTLOOK_STATUS_ZH : LANG === 'ms' ? OUTLOOK_STATUS_MS : null;
+  if (!map || !status) return status;
   // normalise: lowercase, strip the ñ accent so both "Niño" and "Nino" match
   var key = status.toLowerCase().replace(/\u00f1/g, 'n').replace(/\s+/g, ' ').trim();
-  return OUTLOOK_STATUS_ZH[key] || status; // unknown -> English original
+  return map[key] || status; // unknown -> English original
 }
 
 /* ===================== RENDER ===================== */
@@ -3313,17 +3421,16 @@ function applyLang(){
 function buildShareText(){
   var s = HELP_STATE;
   if (!s) return '';
-  var zh = (LANG==='zh');
   var L = [];
   var d = new Date();
   var dateTxt = d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
-  L.push((zh?'🌊 气候信号快报':'🌊 Climate signals snapshot')+' · '+dateTxt);
+  L.push(tr('shareHead')+' · '+dateTxt);
   // ENSO
   var phLbl = s.phase==='warm'?tr('elnino'):s.phase==='cool'?tr('lanina'):tr('neutral');
   if (s.roniStale) L.push('ENSO: '+tr('ensoStaleShort'));
   else L.push('ENSO: '+phLbl+' (RONI '+s.roniLbl+' · '+fmt(s.roni)+')');
   if (!s.wkStale && typeof s.wk==='number')
-    L.push((zh?'每周 Niño3.4: ':'Weekly Niño3.4: ')+fmt1(s.wk)+' ('+(shotDate(weekTs(s.wkDate)) || s.wkDate)+')');
+    L.push(tr('shareWeekly')+fmt1(s.wk)+' ('+(shotDate(weekTs(s.wkDate)) || s.wkDate)+')');
   // IOD (only when good + fresh, same rule as the card)
   if (s.iod && s.iod.ok && typeof s.iod.value==='number'){
     var ip = iodPhaseOf(s.iod.value);
@@ -3337,11 +3444,11 @@ function buildShareText(){
     var mts = new Date(s.mjo.year, s.mjo.month-1, s.mjo.day).getTime();
     if ((Date.now()-mts)/(24*3600*1000) <= 10){
       if (s.mjo.amp < MJO_ACTIVE){
-        L.push('MJO: '+tr('mjoWeakBadge')+' ('+(zh?'位相':'phase')+' '+s.mjo.phase+' · '+s.mjo.amp.toFixed(2)+')');
+        L.push('MJO: '+tr('mjoWeakBadge')+' ('+tr('sharePhase')+' '+s.mjo.phase+' · '+s.mjo.amp.toFixed(2)+')');
       } else {
         var me = mjoEffect(s.mjo.phase);
         var meLbl = me==='wet'?tr('mjoWet'):me==='dry'?tr('mjoDry'):tr('mjoTrans');
-        L.push('MJO: '+(zh?'位相':'phase')+' '+s.mjo.phase+' · '+s.mjo.amp.toFixed(2)+' — '+meLbl);
+        L.push('MJO: '+tr('sharePhase')+' '+s.mjo.phase+' · '+s.mjo.amp.toFixed(2)+' — '+meLbl);
       }
     }
   }
@@ -3349,7 +3456,7 @@ function buildShareText(){
   if (s.mon && ageDays(s.mon.date ? Date.parse(s.mon.date+'T00:00:00Z') : 0) <= MAX_AGE_DAYS.monsoon){
     var stLbl = s.mon.status==='NE'?tr('monNE'):s.mon.status==='SW'?tr('monSW'):tr('monInter');
     var surgeTxt = (s.mon.status==='NE' && s.mon.surge) ? ' — '+tr('monSurgeShort') : '';
-    L.push((zh?'季风: ':'Monsoon: ')+stLbl+surgeTxt);
+    L.push(tr('shareMonsoon')+stLbl+surgeTxt);
   }
   // the 2-second takeaway
   if (s.verdictText) L.push('👉 '+s.verdictText);
@@ -3508,7 +3615,7 @@ function shotSummary(){
           :                                   ['#f1f5f9','#334155','#e2e8f0'];
   var keep = SHOT_SEQ; SHOT_SEQ = { i: 0, n: 1 };               // no section number
   var cv = shotDraw({
-    title: LANG==='zh' ? '今日摘要' : 'Summary',
+    title: tr('shotSumTitle'),
     body: function(g, x, y, W, F){
       var kw = LANG==='zh' ? 230 : 290;
       rows.forEach(function(r){
@@ -3570,9 +3677,9 @@ function shotCombine(parts, extra){
   var today = now.getFullYear()+'-'+('0'+(now.getMonth()+1)).slice(-2)+'-'+('0'+now.getDate()).slice(-2);
   // shared header
   g.fillStyle = '#0c4a6e'; g.font = '800 60px '+F;
-  g.fillText(LANG==='zh' ? '厄尔尼诺 / 拉尼娜监测' : 'ENSO Monitor', M, M + 66);
+  g.fillText(tr('shotHead'), M, M + 66);
   g.font = '600 40px '+F; g.textAlign = 'right';
-  g.fillText((LANG==='zh' ? '气候信号快报 · ' : 'Climate signals · ') + today, W - M, M + 62);
+  g.fillText(tr('shotHeadSub') + today, W - M, M + 62);
   g.textAlign = 'left';
   // sections, each on a white rounded card
   cols.forEach(function(col, ci){
@@ -3696,9 +3803,8 @@ function shotMjo(s, dia){
 function shotDate(ts){
   if (!(ts > 0)) return '';
   var d = new Date(ts);
-  var en = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   return LANG === 'zh' ? d.getUTCFullYear()+'年'+(d.getUTCMonth()+1)+'月'+d.getUTCDate()+'日'
-                       : d.getUTCDate()+' '+en[d.getUTCMonth()]+' '+d.getUTCFullYear();
+                       : d.getUTCDate()+' '+monAbbr(d.getUTCMonth()+1)+' '+d.getUTCFullYear();
 }
 // Paragraph: the first line sits one line-height below y, never on top of it.
 function shotPara(g, text, x, y, W, lh){
@@ -3858,7 +3964,7 @@ function helpContent(){
     +'<div class="outlook">'
       +'<div class="outlook-h">🔭 '+tr('helpOutlookLabel')+'</div>'
       +'<p>'+tr('helpOutlookTxt')+'</p>'
-      +(s && s.out ? '<p><b>'+outlookStatusLabel(s.out.status)+'</b>'+(LANG==='zh' && outlookStatusLabel(s.out.status)!==s.out.status ? ' ('+s.out.status+')' : '')+(s.out.synopsis?' — '+s.out.synopsis:'')+(s.out.issued?' <span class="outdate">('+s.out.issued+')</span>':'')+' <span style="color:#94a3b8;font-size:11px">'+tr('outlookNote')+'</span></p>' : '')
+      +(s && s.out ? '<p><b>'+outlookStatusLabel(s.out.status)+'</b>'+(outlookStatusLabel(s.out.status)!==s.out.status ? ' ('+s.out.status+')' : '')+(s.out.synopsis?' — '+s.out.synopsis:'')+(s.out.issued?' <span class="outdate">('+s.out.issued+')</span>':'')+' <span style="color:#94a3b8;font-size:11px">'+tr('outlookNote')+'</span></p>' : '')
       +'<a href="https://www.cpc.ncep.noaa.gov/products/analysis_monitoring/enso_advisory/ensodisc.shtml" target="_blank" rel="noopener">'+tr('helpOutlookCheck')+'</a>'
     +'</div>'
     // ---------- IOD section (parallel structure to ENSO above) ----------
