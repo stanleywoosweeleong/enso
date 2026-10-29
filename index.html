@@ -369,6 +369,25 @@
     display:flex;flex-direction:column;align-items:center;justify-content:center;
     color:#fff;z-index:99}
   .boot h2{font-size:20px;margin:14px 0 4px}.boot p{font-size:13px;opacity:.8}
+  /* First launch: pick a language (sits above the boot splash) */
+  .onboard{position:fixed;inset:0;z-index:100;overflow:auto;
+    background:linear-gradient(135deg,#0c4a6e,#0e7490);color:#fff;
+    padding:calc(28px + env(safe-area-inset-top)) 20px calc(24px + env(safe-area-inset-bottom))}
+  .onboard[hidden]{display:none}
+  .ob-in{max-width:420px;min-height:100%;margin:0 auto;display:flex;flex-direction:column;gap:22px}
+  .ob-top{display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center}
+  .ob-top img{width:64px;height:64px;border-radius:14px}
+  .ob-top b{font-size:17px}.ob-top span{font-size:13px;opacity:.8}
+  .ob-pick{text-align:center;margin-top:auto}
+  .ob-pick h2{font-size:22px;margin:0;line-height:1.35}
+  .ob-pick h2 + h2{font-size:17px;font-weight:600;opacity:.8}
+  .ob-langs{display:flex;flex-direction:column;gap:10px;margin-bottom:auto}
+  .ob-langs button{display:flex;justify-content:space-between;align-items:center;width:100%;
+    background:#fff;color:var(--ink);border:2px solid transparent;border-radius:12px;
+    padding:15px 16px;font-size:17px;font-weight:700;cursor:pointer;font-family:inherit}
+  .ob-langs button span{font-weight:500;color:var(--muted);font-size:13px}
+  .ob-langs button[aria-pressed="true"]{border-color:#7dd3fc;box-shadow:0 0 0 3px rgba(125,211,252,.35)}
+  .ob-langs button:active{transform:scale(.98)}
 </style>
 </head>
 <body>
@@ -376,6 +395,22 @@
   <div class="spinner" style="border-top-color:#fff"></div>
   <h2>厄尔尼诺/拉尼娜监测</h2>
   <p>ENSO Monitor</p>
+</div>
+
+<div class="onboard" id="onboard" role="dialog" aria-modal="true" aria-label="Choose your language" hidden>
+  <div class="ob-in">
+    <div class="ob-top">
+      <img src="icon-192.png" alt="">
+      <b>厄尔尼诺/拉尼娜监测</b>
+      <span>ENSO Monitor · Pemantau ENSO</span>
+    </div>
+    <div class="ob-pick">
+      <h2 lang="zh">选择语言</h2>
+      <h2 lang="en">Choose your language</h2>
+      <h2 lang="ms">Pilih bahasa</h2>
+    </div>
+    <div class="ob-langs" id="oblangs"></div>
+  </div>
 </div>
 
 <header>
@@ -1548,7 +1583,24 @@ var THRESH = 0.5; // ±0.5 deg C ONI/RONI El Nino / La Nina threshold
 // shows current language. A string missing a language falls back to English.
 var LANG_CYCLE = ['zh','en','ms'];
 var LANG_LBL   = { zh:'中', en:'EN', ms:'BM' };
-var LANG = localStorage.getItem('enso-lang') || 'zh';
+var LANG_NATIVE = { zh:'中文', en:'English', ms:'Bahasa Melayu' };
+// First launch = nothing of ours in storage yet. Decided once, here, before
+// load() writes its data cache. People who used the app before onboarding
+// existed (saved language or cached data) are never shown the picker.
+var FIRST_RUN = (function(){
+  try {
+    return !localStorage.getItem('enso-onboarded') && !localStorage.getItem('enso-lang')
+        && !localStorage.getItem('enso-cache');
+  } catch(_){ return false; }
+})();
+// Best guess from the phone's language, pre-selected on the picker.
+function deviceLang(){
+  var l = ((navigator.languages && navigator.languages[0]) || navigator.language || '').toLowerCase();
+  if (l.indexOf('zh') === 0) return 'zh';
+  if (l.indexOf('ms') === 0 || l.indexOf('id') === 0) return 'ms';
+  return l.indexOf('en') === 0 ? 'en' : 'zh';
+}
+var LANG = localStorage.getItem('enso-lang') || (FIRST_RUN ? deviceLang() : 'zh');
 if (LANG_CYCLE.indexOf(LANG) < 0) LANG = 'zh';
 // Month abbreviations for the non-Chinese languages (index 1-12).
 var MON_NAMES = {
@@ -3913,6 +3965,30 @@ function toggleLang(){
   load();
 }
 
+// ---------- first launch: one tap to pick a language, then straight in ----------
+function startOnboarding(){
+  var ov = document.getElementById('onboard');
+  var box = document.getElementById('oblangs');
+  box.innerHTML = LANG_CYCLE.map(function(k){
+    return '<button type="button" data-lang="'+k+'" lang="'+k+'" aria-pressed="'+(k===LANG)+'">'
+      + LANG_NATIVE[k] + '<span>'+LANG_LBL[k]+'</span></button>';
+  }).join('');
+  box.onclick = function(e){
+    var b = e.target.closest('[data-lang]');
+    if (!b) return;
+    var pick = b.getAttribute('data-lang');
+    try {
+      localStorage.setItem('enso-lang', pick);
+      localStorage.setItem('enso-onboarded', '1');
+    } catch(_){}
+    ov.hidden = true;
+    if (pick !== LANG){ LANG = pick; applyLang(); load(); }
+  };
+  ov.hidden = false;
+  var cur = box.querySelector('[aria-pressed="true"]');
+  if (cur) cur.focus();
+}
+
 // Builds the info-guide inner HTML. Called fresh on each open so the live
 // "right now" situation text reflects current data and language.
 function helpContent(){
@@ -4058,6 +4134,7 @@ function helpBackdrop(e){
 /* ===================== BOOT ===================== */
 function boot(){
   applyLang();
+  if (FIRST_RUN) startOnboarding();   // data loads behind it meanwhile
   NinoMap.setI18n(tr);   // module draws its own labels; give it the translator
   // The fullscreen map lives at body level, outside every scrolling container,
   // so it is never clipped by a card and never fights the page for gestures.
