@@ -300,18 +300,20 @@ async function main(){
     }
 
     const kept = dates.filter(d => existsSync(path.join(OUT, 'sst', `${v}-${d}.json`)));
-    await writeIfChanged(path.join(OUT, 'sst', `index-${v}.json`), {
-      variable: v, dates: kept, newest: newest.date, source: newest.source,
-      lat0: LAT0, lon0: LON0, step: STEP, nlat: newest.nlat, nlon: newest.nlon,
-      scale: 100, fill: FILL, builtAt: new Date().toISOString(),
-    });
     // An index with no dates is unusable: the app fetches it, finds nothing and
-    // sits on "loading" forever. That is a failure, not a quiet success.
+    // sits on "loading" forever. That is a failure, not a quiet success — and
+    // it is checked BEFORE writing, because the workflow commits whatever is on
+    // disk even when this run fails, so the previous good index must survive.
     if (!kept.length){
       hardFail = hardFail || `${v}: index would be EMPTY (anchor ${anchor}, budget ${perVar})`;
       log.push(`FAIL ${v}: no frames on the grid — index left as-is`);
       continue;
     }
+    await writeIfChanged(path.join(OUT, 'sst', `index-${v}.json`), {
+      variable: v, dates: kept, newest: newest.date, source: newest.source,
+      lat0: LAT0, lon0: LON0, step: STEP, nlat: newest.nlat, nlon: newest.nlon,
+      scale: 100, fill: FILL, builtAt: new Date().toISOString(),
+    });
     log.push(`ok   ${v}: newest ${newest.date} via ${newest.source}, ${wrote} new, ${have} cached, `
            + `${kept.length} in index${deferred ? `, ${deferred} deferred to the next run` : ''}`);
   }

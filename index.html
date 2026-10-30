@@ -1636,7 +1636,11 @@ function roniTs(row){
 }
 // Single IOD freshness rule shared by the card, the orchard line and the share.
 function iodTooOld(iod){
-  var max = iod.monthly ? MAX_AGE_DAYS.iodMonthly : MAX_AGE_DAYS.iodWeekly;
+  // Computed (our daily OISST build) is checked first: it is the strictest
+  // limit, and a computed reading must never fall through to the 35-day one.
+  var max = iod.computed ? MAX_AGE_DAYS.iodComputed
+          : iod.monthly  ? MAX_AGE_DAYS.iodMonthly
+          :                MAX_AGE_DAYS.iodWeekly;
   return ageDays(iod.asOf ? bomDateTs(iod.asOf) : 0) > max;
 }
 // Resolve to `fallback` if a promise hasn't settled in ms, so one slow optional

@@ -24,7 +24,7 @@
  * message) and shown in the footer, so a stale install is visible rather than
  * something you have to guess at.
  */
-const CACHE_VERSION = "enso-v1.29.0";
+const CACHE_VERSION = "enso-v1.30.0";
 const SHELL = [
   './',
   './index.html',
@@ -47,12 +47,15 @@ self.addEventListener('install', function(event){
   );
 });
 
-// Activate: drop old caches and take over open pages.
+// Activate: drop OUR old caches and take over open pages. Cache storage is
+// shared by every app on stanleywoosweeleong.github.io (suhu, grasscutting...),
+// so only names with our own prefix are ours to delete.
+var CACHE_PREFIX = 'enso-';
 self.addEventListener('activate', function(event){
   event.waitUntil(
     caches.keys().then(function(keys){
       return Promise.all(keys.map(function(k){
-        if (k !== CACHE_VERSION) return caches.delete(k);
+        if (k.indexOf(CACHE_PREFIX) === 0 && k !== CACHE_VERSION) return caches.delete(k);
       }));
     }).then(function(){
       // Navigation preload, where supported, so network-first navigations do
