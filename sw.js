@@ -24,7 +24,7 @@
  * message) and shown in the footer, so a stale install is visible rather than
  * something you have to guess at.
  */
-const CACHE_VERSION = "enso-v1.30.0";
+const CACHE_VERSION = "enso-v1.30.1";
 const SHELL = [
   './',
   './index.html',
@@ -96,8 +96,12 @@ self.addEventListener('fetch', function(event){
       (event.preloadResponse || Promise.resolve(null)).then(function(pre){
         return pre || fetch(req);
       }).then(function(resp){
-        var copy = resp.clone();
-        caches.open(CACHE_VERSION).then(function(c){ c.put('./index.html', copy); });
+        // Only a good page may become the offline copy: one 404/5xx from
+        // GitHub Pages must not replace the working app shell.
+        if (resp && resp.ok) {
+          var copy = resp.clone();
+          caches.open(CACHE_VERSION).then(function(c){ c.put('./index.html', copy); });
+        }
         return resp;
       }).catch(function(){
         return caches.match('./index.html').then(function(hit){
