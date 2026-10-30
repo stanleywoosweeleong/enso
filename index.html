@@ -1909,6 +1909,7 @@ var T = {
   shareCancel:{zh:'取消', en:'Cancel', ms:'Batal'},
   outlookLbl: {zh:'NOAA 官方展望', en:'NOAA outlook', ms:'Tinjauan NOAA'},
   outlookNote:{zh:'（NOAA 原文，每月更新）', en:'(NOAA original text, monthly)', ms:'(teks asal NOAA, bulanan)'},
+  outlookNext:{zh:'NOAA 每月发布一次，下一期：{d}', en:'NOAA issues this monthly; next update: {d}', ms:'NOAA menerbitkan ini setiap bulan; kemas kini seterusnya: {d}'},
   outlookMT:  {zh:'AI 翻译，以英文原文为准（原文见 ⓘ 说明）', en:'AI translation; the English original prevails (see the ⓘ guide)', ms:'Terjemahan AI; teks asal bahasa Inggeris diguna pakai (lihat panduan ⓘ)'},
   // --- plain-language helpers ---
   helpToggle: {zh:'这些数字是什么意思？', en:'What do these numbers mean?', ms:'Apakah maksud nombor-nombor ini?'},
@@ -2528,9 +2529,11 @@ function bomDateTs(s){
   if (mon === undefined) return 0;
   var now = new Date();
   var year = m[3] ? parseInt(m[3],10) : now.getFullYear();
-  var ts = new Date(year, mon, day).getTime();
+  // UTC midnight: shotDate() reads dates back in UTC, so a local-midnight
+  // timestamp showed the previous day east of Greenwich (Malaysia = UTC+8).
+  var ts = Date.UTC(year, mon, day);
   // If no year was given and the date is in the future, it's last year's.
-  if (!m[3] && ts > now.getTime()) ts = new Date(year-1, mon, day).getTime();
+  if (!m[3] && ts > now.getTime()) ts = Date.UTC(year-1, mon, day);
   return ts;
 }
 
@@ -3151,9 +3154,18 @@ function parseOutlook(text){
     // Undated = cannot age-check = not shown (ageDays -> Infinity).
     if (ageDays(o.issued ? bomDateTs(o.issued) : 0) > 45) return null;
     return { status:o.status, synopsis:o.synopsis || null,
-             synopsisZh:o.synopsisZh || null, issued:o.issued || null };
+             synopsisZh:o.synopsisZh || null, synopsisMs:o.synopsisMs || null,
+             issued:o.issued || null, next:o.next || null };
   } catch(e){ return null; }
 }
+// The synopsis in the current language: the Worker's AI translation when it
+// has one, else NOAA's English. mt says whether a translation is shown.
+function outlookSynopsis(out){
+  var t = LANG==='zh' ? out.synopsisZh : LANG==='ms' ? out.synopsisMs : null;
+  return { text: t || out.synopsis, mt: !!t };
+}
+// NOAA writes dates as "8 October 2026"; show them in the current language.
+function outDate(s){ return (s && shotDate(bomDateTs(s))) || s || ''; }
 // Translate the CPC Alert System Status for Chinese mode. This is safe to map
 // because the status is a small FIXED official vocabulary (unlike the synopsis,
 // which stays in NOAA's original English). Any unrecognised status falls back
@@ -3345,7 +3357,7 @@ function render(roni, weekly, cachedAt, iod, mjo, mon, out){
     +'<div class="herolag">'+tr('heroLag').replace('{s}', latest.seas+' '+latest.yr+' ('+seasonPlain(latest.seas)+')')+'</div>'
     +(out && out.status
         ? '<div class="heroadv">'+tr('heroAdvisory')+'<b>'+outlookStatusLabel(out.status)+'</b>'
-          +(out.issued?' <span class="outdate">('+out.issued+')</span>':'')+'</div>'
+          +(out.issued?' <span class="outdate">('+outDate(out.issued)+')</span>':'')+'</div>'
         : '')
     +'<div class="verdict '+verdict.cls+'"><span class="verdict-i">'+verdict.icon+'</span>'
       +'<span>'+verdict.text+(verdict.sub ? '<span class="verdict-sub">'+verdict.sub+'</span>' : '')+'</span></div>'
@@ -3359,9 +3371,10 @@ function render(roni, weekly, cachedAt, iod, mjo, mon, out){
     +'<div class="row"><span class="k">'+tr('trend3')+'</span><span class="v">'+tr(t3)+'</span></div>'
     +(out ? '<div class="row"><span class="k">'+tr('outlookLbl')+'</span><span class="v">'+outlookStatusLabel(out.status)+'</span></div>'
           +(out.synopsis ? '<div class="outsyn">'
-              +((LANG==='zh' && out.synopsisZh) ? out.synopsisZh : out.synopsis)
-              +(out.issued?' <span class="outdate">('+out.issued+')</span>':'')
-              +((LANG==='zh' && out.synopsisZh) ? '<div class="outdate" style="margin-top:4px">'+tr('outlookMT')+'</div>' : '')
+              +outlookSynopsis(out).text
+              +(out.issued?' <span class="outdate">('+outDate(out.issued)+')</span>':'')
+              +(out.next?'<div class="outdate" style="margin-top:4px">'+tr('outlookNext').replace('{d}', outDate(out.next))+'</div>':'')
+              +(outlookSynopsis(out).mt ? '<div class="outdate" style="margin-top:4px">'+tr('outlookMT')+'</div>' : '')
             +'</div>' : '')
         : '')
   +'</div>'
@@ -4404,7 +4417,7 @@ setTimeout(function(){var b=document.getElementById('boot');if(b)b.style.display
    ?feed=roni     -> RONI.ascii.txt  (official relative ONI, monthly/seasonal)
    ?feed=weekly   -> wksst9120.for   (weekly Nino-region SST anomalies)
    ?feed=mjo      -> NOAA PSL ROMI daily text
-   ?feed=outlook  -> JSON {ok,status,synopsis,synopsisZh,issued}  (CPC discussion scrape)
+   ?feed=outlook  -> JSON {ok,status,synopsis,synopsisZh,synopsisMs,issued,next}  (CPC discussion scrape)
    ?feed=dmimon   -> PSL monthly DMI text (IOD fallback)
    ?feed=sst      -> JSON map frame (fallback when data/sst/*.json is missing)
    Not called: ?feed=oni (available), ?feed=iod (retired; BoM 403s the Worker).

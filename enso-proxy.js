@@ -153,6 +153,10 @@ const OUTLOOK_ABBREV_RE = /\b(?:U\.S|U\.K|i\.e|e\.g|approx|Fig|Dr|Mr|Mrs|vs|etc|
 // page (nav, archive links, footer) and handing the app a wrong issue date,
 // which its 45-day gate would act on.
 const OUTLOOK_DATE_RE = /issued\s+by[\s\S]{0,300}?(\d{1,2}\s+[A-Z][a-z]+\s+\d{4})/;
+// CPC states its next release in the closing line ("The next ENSO Diagnostics
+// Discussion is scheduled for 12 November 2026"). The discussion is monthly, so
+// without this a month-old date reads like a stalled feed.
+const OUTLOOK_NEXT_RE = /next\s+ENSO\s+Diagnostics?\s+Discussion\s+is\s+scheduled\s+for\s+(\d{1,2}\s+[A-Z][a-z]+\s+\d{4})/i;
 // No page-wide fallback: the first date-shaped string on the page is usually
 // nav or archive text. No anchored date -> issued:null, and the app drops it.
 
@@ -453,25 +457,39 @@ async function scrapeOutlook(env) {
 
   const dm = html.match(OUTLOOK_DATE_RE);
   const issued = dm ? dm[dm.length - 1] : null;
+  const nm = html.match(OUTLOOK_NEXT_RE);
+  const next = nm ? nm[1] : null;
 
-  // Optional: translate the synopsis to Chinese via Workers AI (m2m100).
+  // Optional: translate the synopsis to Chinese and Malay via Workers AI (m2m100).
   // Requires an AI binding named "AI" on this Worker (dashboard: Settings ->
   // Bindings -> Add -> Workers AI, variable name AI). If the binding is missing
-  // or the call fails, synopsisZh is simply omitted and the app shows the
-  // English original — graceful, never blocking the feed.
+  // or a call fails, that synopsisZh / synopsisMs is simply omitted and the app
+  // shows the English original — graceful, never blocking the feed.
   // This is the expensive step, and it is why this whole response is cached:
   // it now runs once per TTL instead of once per page load.
-  let synopsisZh = null;
+  let synopsisZh = null, synopsisMs = null;
   if (synopsis && env && env.AI) {
-    try {
-      const t = await env.AI.run('@cf/meta/m2m100-1.2b', {
-        text: zhSource(synopsis), source_lang: 'english', target_lang: 'chinese',
-      });
-      if (t && t.translated_text) synopsisZh = zhTidy(String(t.translated_text).trim());
-    } catch (e) { /* translation is a bonus — never fail the feed for it */ }
+    const [zh, ms] = await Promise.all([
+      translate(env, zhSource(synopsis), 'chinese'),
+      translate(env, zhSource(synopsis), 'malay')
+        .then(function(t){ return t || translate(env, zhSource(synopsis), 'ms'); }),
+    ]);
+    if (zh) synopsisZh = zhTidy(zh);
+    if (ms) synopsisMs = ms;
   }
 
-  return { ok: true, status, synopsis, synopsisZh, issued, source: 'NOAA CPC' };
+  return { ok: true, status, synopsis, synopsisZh, synopsisMs, issued, next, source: 'NOAA CPC' };
+}
+
+// One m2m100 call; null on any failure (translation is a bonus — never fail
+// the feed for it).
+async function translate(env, text, target) {
+  try {
+    const t = await env.AI.run('@cf/meta/m2m100-1.2b', {
+      text: text, source_lang: 'english', target_lang: target,
+    });
+    return (t && t.translated_text) ? String(t.translated_text).trim() : null;
+  } catch (e) { return null; }
 }
 
 export default {
