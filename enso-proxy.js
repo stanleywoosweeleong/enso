@@ -428,6 +428,59 @@ function zhTidy(zh) {
     .replace(/([\u4e00-\u9fff%])\s*;\s*/g, '$1；');
 }
 
+// m2m100 has far more Indonesian than Malay in its training data, so asking
+// for Malay often returns Indonesian ("Maret", "memperkuat", "musim dingin").
+// msSource rewords CPC phrasings the model garbles; msTidy maps what comes
+// back onto Bahasa Malaysia. Both only touch the translated copy.
+function msSource(en) {
+  return zhSource(en)
+    // "(remaining greater than an 83% chance)" came back as "becoming bigger
+    // than the 83% chance"; plain wording translates cleanly.
+    .replace(/\(\s*remaining\s+greater\s+than\s+an?\s+(\d+)\s*%\s+chance\s*\)/gi, '(the chance stays above $1%)')
+    .replace(/\bgreater\s+than\s+an?\s+(\d+)\s*%\s+chance\b/gi, 'a chance of more than $1%')
+    .replace(/\ban?\s+greater\s+than\s+(\d+)\s*%\s+chance\b/gi, 'a chance of more than $1%')
+    // "favored" -> "disukai" (liked); CPC means "expected".
+    .replace(/\bis\s+favou?red\b/gi, 'is expected')
+    .replace(/\bfavou?red\b/gi, 'expected');
+}
+
+// Whole words only, Indonesian -> Malay. Keys are lower case; a capitalised
+// match keeps its capital.
+const MS_WORDS = {
+  // months (Indonesian spellings)
+  maret: 'Mac', juni: 'Jun', juli: 'Julai', agustus: 'Ogos',
+  desember: 'Disember', pebruari: 'Februari', nopember: 'November',
+  // verbs and adverbs
+  memperkuat: 'mengukuh', menguat: 'mengukuh', diperkuat: 'diperkukuh',
+  berlanjut: 'berterusan', melanjutkan: 'meneruskan',
+  diperkirakan: 'dijangka', diprediksi: 'dijangka', diharapkan: 'dijangka',
+  disukai: 'dijangka', diantisipasi: 'dijangka', sampai: 'hingga',
+  // nouns and adjectives
+  kondisi: 'keadaan', netral: 'neutral', transisi: 'peralihan',
+  probabilitas: 'kebarangkalian', persen: 'peratus', kesempatan: 'peluang',
+  ekuator: 'khatulistiwa', ekuatorial: 'khatulistiwa', mendatang: 'akan datang',
+};
+function msTidy(ms) {
+  return ms
+    // phrases first, before single words change under them
+    .replace(/\bmusim\s+dingin\b/gi, 'musim sejuk')
+    .replace(/\bmusim\s+semi\b/gi, 'musim bunga')
+    .replace(/\bbelahan\s+bumi\s+(utara|selatan)\b/gi, function(_, s){
+      return 'Hemisfera ' + s.charAt(0).toUpperCase() + s.slice(1).toLowerCase(); })
+    .replace(/\b(s)aat\s+ini\b/gi, function(_, s){ return s === 'S' ? 'Kini' : 'kini'; })
+    .replace(/\blebih\s+dari\b/gi, 'lebih daripada')
+    // "(becoming bigger than the 83% chance)" -> "(the chance stays above 83%)"
+    .replace(/\(\s*menjadi\s+lebih\s+besar\s+daripada\s+peluang\s+(\d+)\s*%\s*\)/gi, '(peluang kekal melebihi $1%)')
+    .replace(/\blebih\s+besar\s+daripada\s+peluang\s+(\d+)\s*%/gi, 'peluang melebihi $1%')
+    // "kuat kepada sangat kuat" (strong TO very strong) -> "kuat hingga sangat kuat"
+    .replace(/\b(\w+)\s+kepada\s+sangat\s+\1\b/gi, '$1 hingga sangat $1')
+    .replace(/[A-Za-z]+/g, function(w){
+      const m = MS_WORDS[w.toLowerCase()];
+      if (!m) return w;
+      return w.charAt(0) === w.charAt(0).toUpperCase() ? m.charAt(0).toUpperCase() + m.slice(1) : m;
+    });
+}
+
 async function scrapeOutlook(env) {
   const page = await fetch(CPC_OUTLOOK_URL, {
     cf: { cacheTtlByStatus: { '200-299': 21600, '404': 0, '500-599': 0 }, cacheEverything: true },
@@ -471,11 +524,11 @@ async function scrapeOutlook(env) {
   if (synopsis && env && env.AI) {
     const [zh, ms] = await Promise.all([
       translate(env, zhSource(synopsis), 'chinese'),
-      translate(env, zhSource(synopsis), 'malay')
-        .then(function(t){ return t || translate(env, zhSource(synopsis), 'ms'); }),
+      translate(env, msSource(synopsis), 'malay')
+        .then(function(t){ return t || translate(env, msSource(synopsis), 'ms'); }),
     ]);
     if (zh) synopsisZh = zhTidy(zh);
-    if (ms) synopsisMs = ms;
+    if (ms) synopsisMs = msTidy(ms);
   }
 
   return { ok: true, status, synopsis, synopsisZh, synopsisMs, issued, next, source: 'NOAA CPC' };
