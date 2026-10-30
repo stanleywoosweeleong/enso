@@ -2366,7 +2366,7 @@ function shortTermLean(mjo, mon){
       parts.push(tr(wk).replace('{p}', mjo.phase).replace('{a}', mjo.amp.toFixed(2)));
     }
   }
-  if (mon && mon.surge && mon.date
+  if (mon && mon.status === 'NE' && mon.surge && mon.date
       && ageDays(Date.parse(mon.date + 'T00:00:00Z')) <= MAX_AGE_DAYS.monsoon){
     if (lean === 'dry') parts = [];
     lean = 'wet';
@@ -4216,6 +4216,8 @@ function sstStatic(v){
 
 function sstLoad(varName){
   if (typeof NinoMap === 'undefined' || !NinoMap.SST) return;
+  // No argument (the refresh in load()) means the variable currently shown.
+  if (!varName) varName = NinoMap.SST.getVariable();
   var v = (varName === 'sst') ? 'sst' : 'anom';
   // Both paths report why they failed. They used to swallow every error, so a
   // total failure looked exactly like "still loading" and the row spun forever.
